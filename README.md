@@ -1,6 +1,6 @@
 # Witrium JS/TS Client SDK
 
-[![npm version](https://badge.fury.io/js/%40witrium%2Fjs-client.svg)](https://badge.fury.io/js/%40witrium%2Fjs-client)
+[![npm version](https://badge.fury.io/js/%40witrium%2Fwitrium.svg)](https://badge.fury.io/js/%40witrium%2Fwitrium)
 
 The official JavaScript/TypeScript client for the Witrium API.
 
@@ -9,11 +9,11 @@ The official JavaScript/TypeScript client for the Witrium API.
 You can install the package using npm or yarn:
 
 ```bash
-npm install @witrium/witrium-js
+npm install @witrium/witrium
 ```
 
 ```bash
-yarn add @witrium/witrium-js
+yarn add @witrium/witrium
 ```
 
 ## Usage
@@ -23,7 +23,7 @@ yarn add @witrium/witrium-js
 First, import and initialize the client with your API token.
 
 ```typescript
-import { WitriumClient } from '@witrium/witrium-js';
+import { WitriumClient } from '@witrium/witrium';
 
 const client = new WitriumClient('YOUR_API_TOKEN');
 ```
@@ -94,7 +94,7 @@ async function runAndWait() {
 If you need to wait for a workflow run to reach a particular status before proceeding, you can use `waitUntilState`.
 
 ```typescript
-import { WorkflowRunStatus } from '@witrium/witrium-js';
+import { WorkflowRunStatus } from '@witrium/witrium';
 
 async function waitForRunningState(runId: string) {
   try {
