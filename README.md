@@ -9,11 +9,11 @@ The official JavaScript/TypeScript client for the Witrium API.
 You can install the package using npm or yarn:
 
 ```bash
-npm install @witrium/js-client
+npm install @witrium/witrium-js
 ```
 
 ```bash
-yarn add @witrium/js-client
+yarn add @witrium/witrium-js
 ```
 
 ## Usage
@@ -23,7 +23,7 @@ yarn add @witrium/js-client
 First, import and initialize the client with your API token.
 
 ```typescript
-import { WitriumClient } from '@witrium/js-client';
+import { WitriumClient } from '@witrium/witrium-js';
 
 const client = new WitriumClient('YOUR_API_TOKEN');
 ```
@@ -94,7 +94,7 @@ async function runAndWait() {
 If you need to wait for a workflow run to reach a particular status before proceeding, you can use `waitUntilState`.
 
 ```typescript
-import { WorkflowRunStatus } from '@witrium/js-client';
+import { WorkflowRunStatus } from '@witrium/witrium-js';
 
 async function waitForRunningState(runId: string) {
   try {

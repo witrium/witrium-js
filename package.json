@@ -1,5 +1,5 @@
 {
-  "name": "@witrium/js-client",
+  "name": "@witrium/witrium-js",
   "version": "0.1.0",
   "description": "JS/TS client SDK for Witrium",
   "main": "dist/index.js",
