@@ -1,0 +1,43 @@
+{
+  "name": "@witrium/js-client",
+  "version": "0.1.0",
+  "description": "JS/TS client SDK for Witrium",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "format": "prettier --write \"src/**/*.{ts,js,json}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,js,json}\"",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "witrium",
+    "sdk",
+    "api-client"
+  ],
+  "author": "Witrium",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/witrium/witrium-js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/witrium/witrium-js/issues"
+  },
+  "homepage": "https://github.com/witrium/witrium-js#readme",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "axios": "^1.12.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.4.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2"
+  }
+}
