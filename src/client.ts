@@ -47,7 +47,24 @@ export class WitriumClient {
   ): Promise<WorkflowRunSubmitted> {
     const url = `/v1/workflows/${workflowId}/run`;
     try {
-      const response = await this.client.post(url, options);
+      // Build payload, excluding undefined values to match Python behavior
+      const payload: Record<string, any> = {};
+      if (options.args !== undefined) payload.args = options.args;
+      if (options.files !== undefined) payload.files = options.files;
+      if (options.use_states !== undefined)
+        payload.use_states = options.use_states;
+      if (options.preserve_state !== undefined)
+        payload.preserve_state = options.preserve_state;
+      if (options.no_intelligence !== undefined)
+        payload.no_intelligence = options.no_intelligence;
+      if (options.record_session !== undefined)
+        payload.record_session = options.record_session;
+      if (options.keep_session_alive !== undefined)
+        payload.keep_session_alive = options.keep_session_alive;
+      if (options.use_existing_session !== undefined)
+        payload.use_existing_session = options.use_existing_session;
+
+      const response = await this.client.post(url, payload);
       return response.data;
     } catch (error) {
       const errorDetail = await this._extractErrorDetail(error);

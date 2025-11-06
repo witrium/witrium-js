@@ -1,8 +1,14 @@
 export type WorkflowStatus = "P" | "R" | "C" | "F" | "X";
 export type AgentStatus = "P" | "R" | "C" | "F" | "X";
 
+export interface FileUpload {
+  filename: string;
+  data: string; // base64 encoded file content
+}
+
 export interface WorkflowRunExecuteOptions {
   args?: Record<string, string | number>;
+  files?: FileUpload[];
   use_states?: string[];
   preserve_state?: string;
   no_intelligence?: boolean;
@@ -30,6 +36,8 @@ export interface WorkflowRunExecution {
   instruction_id: string;
   instruction: string;
   result?: Record<string, any> | any[];
+  result_format?: string;
+  message?: string;
   status: AgentStatus;
   error_message?: string;
 }
@@ -41,7 +49,7 @@ export interface WorkflowRunResults {
   started_at?: string;
   completed_at?: string;
   message?: string;
-  executions: AgentExecution[];
+  executions?: AgentExecution[];
   result?: Record<string, any> | any[];
   result_format?: string;
   error_message?: string;
@@ -55,7 +63,7 @@ export interface Workflow {
 
 export interface WorkflowRun {
   uuid: string;
-  session_id: string;
+  session_id?: string; // browser_session id
   workflow: Workflow;
   run_type: string;
   triggered_by: string;
@@ -64,5 +72,5 @@ export interface WorkflowRun {
   started_at?: string;
   completed_at?: string;
   error_message?: string;
-  executions: WorkflowRunExecution[];
+  executions?: WorkflowRunExecution[];
 }
