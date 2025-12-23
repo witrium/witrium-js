@@ -74,3 +74,10 @@ export interface WorkflowRun {
   error_message?: string;
   executions?: WorkflowRunExecution[];
 }
+
+export interface TalentExecuteSchema {
+  args?: Record<string, any> | null;
+  files?: FileUpload[] | null;
+  use_states?: string[] | null;
+  preserve_state?: string | null;
+}

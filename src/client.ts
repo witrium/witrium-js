@@ -5,6 +5,7 @@ import {
   WorkflowRunResults,
   WorkflowRun,
   WorkflowStatus,
+  TalentExecuteSchema,
 } from "./types";
 import { WitriumClientException } from "./errors";
 import { AgentExecutionStatus, WorkflowRunStatus } from "./constants";
@@ -222,6 +223,25 @@ export class WitriumClient {
         : "unknown";
       throw new WitriumClientException(
         `Error cancelling workflow run: ${errorDetail} (Status code: ${statusCode})`
+      );
+    }
+  }
+
+  async runTalent(
+    talentId: string,
+    options: TalentExecuteSchema
+  ): Promise<any> {
+    const url = `/v1/talents/${talentId}/run`;
+    try {
+      const response = await this.client.post(url, options);
+      return response.data;
+    } catch (error) {
+      const errorDetail = await this._extractErrorDetail(error);
+      const statusCode = axios.isAxiosError(error)
+        ? error.response?.status
+        : "unknown";
+      throw new WitriumClientException(
+        `Error running talent: ${errorDetail} (Status code: ${statusCode})`
       );
     }
   }
