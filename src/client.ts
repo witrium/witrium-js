@@ -6,6 +6,7 @@ import {
   WorkflowRun,
   WorkflowStatus,
   TalentExecuteSchema,
+  TalentResultSchema,
 } from "./types";
 import { WitriumClientException } from "./errors";
 import { AgentExecutionStatus, WorkflowRunStatus } from "./constants";
@@ -230,7 +231,7 @@ export class WitriumClient {
   async runTalent(
     talentId: string,
     options: TalentExecuteSchema
-  ): Promise<any> {
+  ): Promise<TalentResultSchema> {
     const url = `/v1/talents/${talentId}/run`;
     try {
       const response = await this.client.post(url, options);

@@ -398,7 +398,12 @@ async function run() {
     // use_states: ["state-id"],
     // preserve_state: "new-state-name"
   });
-  console.log("Talent result:", result);
+  
+  console.log("Talent status:", result.status);
+  console.log("Talent result:", result.result);
+  if (result.error_message) {
+    console.error("Error:", result.error_message);
+  }
 }
 ```
 
@@ -566,7 +571,7 @@ Run a talent by ID.
 async runTalent(
   talentId: string,
   options: TalentExecuteSchema
-): Promise<any>
+): Promise<TalentResultSchema>
 ```
 
 ##### waitUntilState()
@@ -650,6 +655,20 @@ AgentExecutionStatus.CANCELLED    // "X" - Execution step cancelled
   result?: Record<string, any> | any[]; // Final workflow result
   result_format?: string;
   error_message?: string;
+}
+```
+
+#### TalentResultSchema
+
+```typescript
+{
+  status: string;
+  started_at: string | null;
+  completed_at: string | null;
+  message: string | null;
+  result: any | null;              // Final talent result
+  result_format: string | null;
+  error_message: string | null;
 }
 ```
 

@@ -81,3 +81,13 @@ export interface TalentExecuteSchema {
   use_states?: string[] | null;
   preserve_state?: string | null;
 }
+
+export interface TalentResultSchema {
+  status: string;
+  started_at: string | null;
+  completed_at: string | null;
+  message: string | null;
+  result: any | null;
+  result_format: string | null;
+  error_message: string | null;
+}
