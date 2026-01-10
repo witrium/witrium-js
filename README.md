@@ -11,7 +11,7 @@ Witrium operates by spinning up browser instances in the cloud to execute predef
 3. **Cloud Execution**: Witrium runs your automation in a real browser instance in the cloud
 4. **Retrieve Results**: You poll for results and handle the automation outcomes
 
-Each workflow is identified by a unique `workflow_id` and can accept arguments to customize its execution.
+Each workflow is identified by a unique `workflowId` and can accept arguments to customize its execution.
 
 ## Installation
 
@@ -42,25 +42,23 @@ async function main() {
     // 2. Kick-off the **login** workflow and keep the browser alive
     const login = await client.runWorkflow("login-workflow-id", {
       args: { username: "user@example.com", password: "secretPass!" },
-      keep_session_alive: true, // 🔑 keep the browser running after login
+      keepSessionAlive: true, // 🔑 keep the browser running after login
     });
 
     // 3. Block until the browser is *ready for reuse*
-    await client.waitUntilState(
-      login.run_id,
-      WorkflowRunStatus.RUNNING, // Wait until browser is alive
-      { allInstructionsExecuted: true } // …and the last login step finished
-    );
+    await client.waitUntilState(login.runId, WorkflowRunStatus.RUNNING, {
+      allInstructionsExecuted: true, // …and the last login step finished
+    });
 
     // 4. Re-use that **same** browser session in a follow-up workflow
     const scrape = await client.runWorkflow("dashboard-scrape-workflow-id", {
       args: { section: "sales" },
-      use_existing_session: login.run_id, // 👈 same browser instance
+      useExistingSession: login.runId, // 👈 same browser instance
     });
 
     // 5. Wait for the scrape to finish and collect the results
     const results = await client.waitUntilState(
-      scrape.run_id,
+      scrape.runId,
       WorkflowRunStatus.COMPLETED
     );
 
@@ -79,25 +77,25 @@ main();
 
 `client.runWorkflow(...)` **only submits** a job – the real browser work happens asynchronously in the cloud. Keep these steps in mind whenever you design multi-step automations:
 
-1. **Submit** – your call returns instantly with a `run_id`.
+1. **Submit** – your call returns instantly with a `runId`.
 2. **Poll / Wait** – use `waitUntilState()` (or `runWorkflowAndWait()`) to block until the run reaches:
-   • `WorkflowRunStatus.RUNNING` – the browser has spun-up and is ready (handy when you enabled `keep_session_alive`).
+   • `WorkflowRunStatus.RUNNING` – the browser has spun-up and is ready (handy when you enabled `keepSessionAlive`).
    • `WorkflowRunStatus.COMPLETED` – the workflow has finished executing.
 3. **Chain or Fetch Results** – once the target state is reached you can either run another workflow (chaining sessions) or read the data via `getWorkflowResults()`.
 
 ### When to wait for which state?
 
-| Scenario | Recommended `targetStatus` | Extra flags |
-|----------|-----------------------------|-------------|
-| You **saved state** using `preserve_state` | `COMPLETED` | – |
-| You **kept the session alive** using `keep_session_alive` **and intend to reuse it** | `RUNNING` | `allInstructionsExecuted: true` |
+| Scenario | Recommended `targetStatus` | Extra parameters |
+|----------|----------------------------|------------------|
+| You **saved state** using `preserveState` | `COMPLETED` | – |
+| You **kept the session alive** using `keepSessionAlive` **and intend to reuse it** | `RUNNING` | `allInstructionsExecuted: true` |
 
 > ⏳ **Tip:** For very long login flows (e.g. multi-factor auth) combine `minWaitTime` with `pollingInterval` to reduce server load.
 
 ### Concurrency vs. Serial Execution
 
-• **State Preservation (`preserve_state`)** – Each follow-up workflow spins up its **own** browser. Scale **horizontally** & run many in parallel.
-• **Session Persistence (`keep_session_alive`)** – All follow-up workflows share **one** browser instance. Run them **serially** (until multi-tab support lands).
+• **State Preservation (`preserveState`)** – Each follow-up workflow spins up its **own** browser. Scale **horizontally** & run many in parallel.
+• **Session Persistence (`keepSessionAlive`)** – All follow-up workflows share **one** browser instance. Run them **serially** (until multi-tab support lands).
 
 ---
 
@@ -138,12 +136,12 @@ async function run() {
   // Step 1: Run login workflow and preserve the authenticated state
   const loginResponse = await client.runWorkflow("login-workflow-id", {
     args: { username: "user@example.com", password: "secure123" },
-    preserve_state: "authenticated-session", // Save state with this name
+    preserveState: "authenticated-session", // Save state with this name
   });
 
   // Step 2: Wait for login to complete
   await client.waitUntilState(
-    loginResponse.run_id,
+    loginResponse.runId,
     WorkflowRunStatus.COMPLETED
   );
 
@@ -154,12 +152,12 @@ async function run() {
     // Workflow A: Extract data from dashboard
     client.runWorkflow("dashboard-scraping-workflow-id", {
       args: { report_type: "monthly" },
-      use_states: ["authenticated-session"], // Restore the saved state
+      useStates: ["authenticated-session"], // Restore the saved state
     }),
     // Workflow B: Update user profile (can run concurrently)
     client.runWorkflow("profile-update-workflow-id", {
       args: { new_email: "newemail@example.com" },
-      use_states: ["authenticated-session"], // Same state, different browser instance
+      useStates: ["authenticated-session"], // Same state, different browser instance
     })
   ]);
 
@@ -193,16 +191,14 @@ async function run() {
   // Step 1: Run login workflow and keep the browser session alive
   const loginResponse = await client.runWorkflow("login-workflow-id", {
     args: { username: "user@example.com", password: "secure123" },
-    keep_session_alive: true, // Keep browser instance running
+    keepSessionAlive: true, // Keep browser instance running
   });
 
   // Step 2: Wait for login to complete and start running
   // We wait for RUNNING status because the browser is kept alive
-  await client.waitUntilState(
-    loginResponse.run_id,
-    WorkflowRunStatus.RUNNING,
-    { allInstructionsExecuted: true } // Ensure login steps are done
-  );
+  await client.waitUntilState(loginResponse.runId, WorkflowRunStatus.RUNNING, {
+    allInstructionsExecuted: true, // Ensure login steps are done
+  });
 
   // Step 3: Run subsequent workflows in the same browser session
   // These must run serially, not concurrently
@@ -210,19 +206,19 @@ async function run() {
   // Workflow A: Extract data from dashboard
   const dashboardResponse = await client.runWorkflow("dashboard-scraping-workflow-id", {
     args: { report_type: "monthly" },
-    use_existing_session: loginResponse.run_id, // Use the live session
+    useExistingSession: loginResponse.runId, // Use the live session
   });
 
   // Wait for dashboard workflow to complete before next one
   await client.waitUntilState(
-    dashboardResponse.run_id,
+    dashboardResponse.runId,
     WorkflowRunStatus.COMPLETED
   );
 
   // Workflow B: Update user profile (must wait for previous to complete)
   const profileResponse = await client.runWorkflow("profile-update-workflow-id", {
     args: { new_email: "newemail@example.com" },
-    use_existing_session: loginResponse.run_id, // Same live session
+    useExistingSession: loginResponse.runId, // Same live session
   });
 }
 ```
@@ -250,11 +246,11 @@ async function extractCategoryData(category: string, stateName: string) {
   try {
     const response = await client.runWorkflow("category-scraper-workflow", {
       args: { category },
-      use_states: [stateName],
+      useStates: [stateName],
     });
 
     const results = await client.waitUntilState(
-      response.run_id,
+      response.runId,
       WorkflowRunStatus.COMPLETED
     );
 
@@ -270,12 +266,12 @@ async function run() {
   // Step 1: Login and save state
   const loginResponse = await client.runWorkflow("ecommerce-login-workflow", {
     args: { email: "seller@example.com", password: "secure123" },
-    preserve_state: "ecommerce-authenticated",
+    preserveState: "ecommerce-authenticated",
   });
 
   // Wait for login completion
   await client.waitUntilState(
-    loginResponse.run_id,
+    loginResponse.runId,
     WorkflowRunStatus.COMPLETED
   );
   console.log("Login completed, state preserved");
@@ -315,17 +311,17 @@ async function run() {
       password: "secure456",
       phone_number: "+1234567890", // For 2FA
     },
-    keep_session_alive: true, // Keep session for subsequent operations
+    keepSessionAlive: true, // Keep session for subsequent operations
   });
 
   // Wait for login and 2FA to complete
   console.log("Waiting for login and 2FA completion...");
   const loginResults = await client.waitUntilState(
-    loginResponse.run_id,
+    loginResponse.runId,
     WorkflowRunStatus.RUNNING,
     {
       allInstructionsExecuted: true,
-      minWaitTime: 30000, // 30s - 2FA usually takes some time (note: ms in JS)
+      minWaitTime: 30000, // 30s - 2FA usually takes some time
     }
   );
   console.log("Secure login completed");
@@ -334,11 +330,11 @@ async function run() {
   console.log("Checking account balances...");
   const balanceResponse = await client.runWorkflow("check-balances-workflow", {
     args: { account_types: ["checking", "savings", "credit"] },
-    use_existing_session: loginResponse.run_id,
+    useExistingSession: loginResponse.runId,
   });
 
   const balanceResults = await client.waitUntilState(
-    balanceResponse.run_id,
+    balanceResponse.runId,
     WorkflowRunStatus.COMPLETED
   );
   console.log("Account balances retrieved:", balanceResults.result);
@@ -351,11 +347,11 @@ async function run() {
       format: "csv",
       accounts: ["checking", "savings"],
     },
-    use_existing_session: loginResponse.run_id,
+    useExistingSession: loginResponse.runId,
   });
 
   await client.waitUntilState(
-    transactionResponse.run_id,
+    transactionResponse.runId,
     WorkflowRunStatus.COMPLETED
   );
   console.log("Transaction history downloaded");
@@ -367,11 +363,11 @@ async function run() {
       report_type: "monthly_summary",
       include_charts: true,
     },
-    use_existing_session: loginResponse.run_id,
+    useExistingSession: loginResponse.runId,
   });
 
   await client.waitUntilState(
-    reportResponse.run_id,
+    reportResponse.runId,
     WorkflowRunStatus.COMPLETED
   );
 
@@ -393,16 +389,16 @@ async function run() {
   // Run a talent by ID with its execution schema
   const result = await client.runTalent("talent-uuid", {
     args: { key: "value" },
-    // Optional parameters:
-    // files: [...],
-    // use_states: ["state-id"],
-    // preserve_state: "new-state-name"
+    useStates: ["state-id"],
+    preserveState: "new-state-name",
+    keepSessionAlive: true,
+    useExistingSession: "existing-run-id",
   });
   
   console.log("Talent status:", result.status);
   console.log("Talent result:", result.result);
-  if (result.error_message) {
-    console.error("Error:", result.error_message);
+  if (result.errorMessage) {
+    console.error("Error:", result.errorMessage);
   }
 }
 ```
@@ -430,14 +426,14 @@ async function run() {
   const response = await client.runWorkflow("workflow-uuid", {
     args: { key1: "value1" },
   });
-  console.log(`Workflow run started: ${response.run_id}`);
+  console.log(`Workflow run started: ${response.runId}`);
 
   // Get results later
-  const laterResults = await client.getWorkflowResults(response.run_id);
+  const laterResults = await client.getWorkflowResults(response.runId);
 
   // Wait for workflow to start running
   const runningState = await client.waitUntilState(
-    response.run_id,
+    response.runId,
     WorkflowRunStatus.RUNNING
   );
   console.log(`Workflow is now running: ${runningState.status}`);
@@ -464,7 +460,7 @@ async function run() {
           if (execution.status === "C") {
             console.log(`✅ ${execution.instruction}`);
           } else if (execution.status === "F") {
-            console.error(`❌ ${execution.instruction}: ${execution.error_message}`);
+            console.error(`❌ ${execution.instruction}: ${execution.errorMessage}`);
           }
         });
       }
@@ -500,8 +496,8 @@ function monitorWorkflowProgress(result: WorkflowRunResults) {
     
     console.log(`  ${emoji} Step ${i+1}: ${execution.instruction}`);
     
-    if (execution.error_message) {
-      console.log(`    ⚠️  Error: ${execution.error_message}`);
+    if (execution.errorMessage) {
+      console.log(`    ⚠️  Error: ${execution.errorMessage}`);
     }
   });
 }
@@ -511,7 +507,7 @@ const client = new WitriumClient("your-api-token");
 async function run() {
   const results = await client.runWorkflowAndWait("workflow-uuid", {
     args: { key1: "value1" },
-    onProgress: monitorWorkflowProgress
+    onProgress: monitorWorkflowProgress,
   });
 }
 ```
@@ -539,29 +535,44 @@ Execute a workflow in the Witrium platform.
 ```typescript
 async runWorkflow(
   workflowId: string,
-  options: WorkflowRunExecuteOptions = {}
+  options?: WorkflowRunOptions
 ): Promise<WorkflowRunSubmitted>
 ```
 
-**WorkflowRunExecuteOptions:**
+**WorkflowRunOptions:**
 
 ```typescript
-interface WorkflowRunExecuteOptions {
-  args?: Record<string, string | number>; // Arguments to pass to the workflow
-  files?: FileUpload[];                   // Files to upload
-  use_states?: string[];                  // List of saved state names to restore
-  preserve_state?: string;                // Name to save the browser state as
-  no_intelligence?: boolean;              // Disable AI assistance
-  record_session?: boolean;               // Record the browser session
-  keep_session_alive?: boolean;           // Keep browser alive after completion
-  use_existing_session?: string;          // Workflow run ID of existing session to use
+interface WorkflowRunOptions {
+  args?: Record<string, string | number>;
+  files?: FileUpload[];
+  useStates?: string[];
+  preserveState?: string;
+  noIntelligence?: boolean;
+  recordSession?: boolean;
+  keepSessionAlive?: boolean;
+  useExistingSession?: string;
 }
 ```
 
-- `preserve_state`: Save the browser state with this name after workflow completion. Other workflows can then restore this state using `use_states`.
-- `use_states`: List of previously saved state names to restore at the start of this workflow.
-- `keep_session_alive`: If true, keeps the browser instance running after workflow completion.
-- `use_existing_session`: Run this workflow in an existing browser session (identified by workflow run ID).
+**Parameters:**
+
+- `workflowId`: The UUID of the workflow to execute
+- `options`: (Optional) Configuration options for the workflow run
+  - `args`: Arguments to pass to the workflow
+  - `files`: Files to upload (array of `{ filename: string, data: string }` where data is base64 encoded)
+  - `useStates`: List of saved state names to restore at the start of this workflow
+  - `preserveState`: Name to save the browser state as after workflow completion
+  - `noIntelligence`: Disable AI assistance
+  - `recordSession`: Record the browser session
+  - `keepSessionAlive`: If true, keeps the browser instance running after workflow completion
+  - `useExistingSession`: Workflow run ID of existing session to use
+
+**State Management:**
+
+- `preserveState`: Save the browser state with this name after workflow completion. Other workflows can then restore this state using `useStates`.
+- `useStates`: List of previously saved state names to restore at the start of this workflow.
+- `keepSessionAlive`: If true, keeps the browser instance running after workflow completion.
+- `useExistingSession`: Run this workflow in an existing browser session (identified by workflow run ID).
 
 ##### runTalent()
 
@@ -570,9 +581,33 @@ Run a talent by ID.
 ```typescript
 async runTalent(
   talentId: string,
-  options: TalentExecuteSchema
-): Promise<TalentResultSchema>
+  options?: TalentRunOptions
+): Promise<TalentRunResult>
 ```
+
+**TalentRunOptions:**
+
+```typescript
+interface TalentRunOptions {
+  args?: Record<string, string | number>;
+  files?: FileUpload[];
+  useStates?: string[];
+  preserveState?: string;
+  keepSessionAlive?: boolean;
+  useExistingSession?: string;
+}
+```
+
+**Parameters:**
+
+- `talentId`: The UUID of the talent to execute
+- `options`: (Optional) Configuration options for the talent run
+  - `args`: Arguments to pass to the talent
+  - `files`: Files to upload
+  - `useStates`: List of saved state names to restore
+  - `preserveState`: Name to save the browser state as
+  - `keepSessionAlive`: Keep browser alive after completion
+  - `useExistingSession`: Run ID of existing session to use
 
 ##### waitUntilState()
 
@@ -582,26 +617,66 @@ Wait for a workflow run to reach a specific status.
 async waitUntilState(
   runId: string,
   targetStatus: WorkflowStatus,
-  options: {
-    allInstructionsExecuted?: boolean; // Also wait for all executions to complete
-    minWaitTime?: number;              // Minimum milliseconds to wait before polling starts
-    pollingInterval?: number;          // Milliseconds between polling attempts
-    timeout?: number;                  // Maximum milliseconds to wait
-  } = {}
+  options?: WaitUntilStateOptions
 ): Promise<WorkflowRunResults>
 ```
 
-**Key Parameters:**
+**WaitUntilStateOptions:**
 
+```typescript
+interface WaitUntilStateOptions {
+  allInstructionsExecuted?: boolean;
+  minWaitTime?: number;
+  pollingInterval?: number;
+  timeout?: number;
+}
+```
+
+**Parameters:**
+
+- `runId`: The workflow run ID to wait for
 - `targetStatus`: Use `WorkflowRunStatus` constants (PENDING, RUNNING, COMPLETED, FAILED, CANCELLED)
-- `allInstructionsExecuted`: When true, also waits for all individual execution steps to complete
-- `minWaitTime`: Useful for long-running workflows to reduce unnecessary polling
+- `options`: (Optional) Configuration options for waiting
+  - `allInstructionsExecuted`: When true, also waits for all individual execution steps to complete
+  - `minWaitTime`: Minimum milliseconds to wait before polling starts - useful for long-running workflows
+  - `pollingInterval`: Milliseconds between polling attempts (default: 2000)
+  - `timeout`: Maximum milliseconds to wait (default: 60000)
+
+##### runWorkflowAndWait()
+
+Run a workflow and wait for it to complete (or reach a terminal status).
+
+```typescript
+async runWorkflowAndWait(
+  workflowId: string,
+  options?: RunWorkflowAndWaitOptions
+): Promise<WorkflowRunResults | WorkflowRunResults[]>
+```
+
+**RunWorkflowAndWaitOptions:**
+
+```typescript
+interface RunWorkflowAndWaitOptions extends WorkflowRunOptions {
+  pollingInterval?: number;
+  timeout?: number;
+  returnIntermediateResults?: boolean;
+  onProgress?: (results: WorkflowRunResults) => void;
+}
+```
+
+**Parameters:**
+
+- `workflowId`: The UUID of the workflow to execute
+- `options`: (Optional) Configuration options (includes all `WorkflowRunOptions` plus):
+  - `pollingInterval`: Milliseconds between polling attempts (default: 5000)
+  - `timeout`: Maximum milliseconds to wait (default: 300000)
+  - `returnIntermediateResults`: If true, returns array of all intermediate results (default: false)
+  - `onProgress`: Callback function called on each polling iteration with current results
 
 ##### Other Methods
 
-- `getWorkflowResults(runId)`: Get current results of a workflow run
-- `runWorkflowAndWait(workflowId, options)`: Run a workflow and poll until completion
-- `cancelRun(runId)`: Cancel a workflow run and clean up associated resources
+- `getWorkflowResults(runId: string)`: Get current results of a workflow run
+- `cancelRun(runId: string)`: Cancel a workflow run and clean up associated resources
 
 ### Status Constants
 
@@ -635,8 +710,8 @@ AgentExecutionStatus.CANCELLED    // "X" - Execution step cancelled
 
 ```typescript
 {
-  workflow_id: string;
-  run_id: string;  // Use this for polling and session management
+  workflowId: string;
+  runId: string;  // Use this for polling and session management
   status: WorkflowStatus;
 }
 ```
@@ -645,30 +720,43 @@ AgentExecutionStatus.CANCELLED    // "X" - Execution step cancelled
 
 ```typescript
 {
-  workflow_id: string;
-  run_id: string;
+  workflowId: string;
+  runId: string;
   status: WorkflowStatus;
-  started_at?: string;
-  completed_at?: string;
+  startedAt?: string;
+  completedAt?: string;
   message?: string;
   executions?: AgentExecution[];  // Individual execution steps
   result?: Record<string, any> | any[]; // Final workflow result
-  result_format?: string;
-  error_message?: string;
+  resultFormat?: string;
+  errorMessage?: string;
 }
 ```
 
-#### TalentResultSchema
+#### AgentExecution
+
+```typescript
+{
+  status: AgentStatus;
+  instructionOrder: number;
+  instruction: string;
+  result?: Record<string, any> | any[];
+  resultFormat?: string;
+  errorMessage?: string;
+}
+```
+
+#### TalentRunResult
 
 ```typescript
 {
   status: string;
-  started_at: string | null;
-  completed_at: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
   message: string | null;
   result: any | null;              // Final talent result
-  result_format: string | null;
-  error_message: string | null;
+  resultFormat: string | null;
+  errorMessage: string | null;
 }
 ```
 
@@ -704,7 +792,7 @@ async function run() {
   });
 
   // Later, decide to cancel it
-  const cancelResult = await client.cancelRun(response.run_id);
+  const cancelResult = await client.cancelRun(response.runId);
   console.log(`Workflow cancelled with status: ${cancelResult.status}`);
 }
 ```
@@ -722,14 +810,18 @@ Always wrap your API calls in try/catch blocks to handle potential network issue
 for (const category of categories) {
   await client.runWorkflow("scraper", {
     args: { category },
-    use_states: ["logged-in-state"] // Each runs in new browser
+    useStates: ["logged-in-state"], // Each runs in new browser
   });
 }
 
 // ✅ For sequential operations - use session persistence
-const loginRun = await client.runWorkflow(..., { keep_session_alive: true });
-await client.waitUntilState(loginRun.run_id, WorkflowRunStatus.RUNNING);
-await client.runWorkflow(..., { use_existing_session: loginRun.run_id }); // Same browser
+const loginRun = await client.runWorkflow("workflow-id", {
+  keepSessionAlive: true,
+});
+await client.waitUntilState(loginRun.runId, WorkflowRunStatus.RUNNING);
+await client.runWorkflow("next-workflow-id", {
+  useExistingSession: loginRun.runId, // Same browser
+});
 ```
 
 ### 3. Use Appropriate Timeouts
