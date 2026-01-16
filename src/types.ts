@@ -13,8 +13,8 @@ export interface WorkflowRunOptions {
   preserveState?: string;
   noIntelligence?: boolean;
   recordSession?: boolean;
-  keepSessionAlive?: boolean;
-  useExistingSession?: string;
+  browserSessionId?: string;
+  skipGotoUrlInstruction?: boolean;
 }
 
 export interface TalentRunOptions {
@@ -22,8 +22,7 @@ export interface TalentRunOptions {
   files?: FileUpload[];
   useStates?: string[];
   preserveState?: string;
-  keepSessionAlive?: boolean;
-  useExistingSession?: string;
+  browserSessionId?: string;
 }
 
 export interface WaitUntilStateOptions {
@@ -106,4 +105,37 @@ export interface TalentRunResult {
   result: any | null;
   resultFormat: string | null;
   errorMessage: string | null;
+}
+
+export interface BrowserSessionCreateOptions {
+  provider?: string;
+  useProxy?: boolean;
+  proxyCountry?: string;
+  proxyCity?: string;
+  useStates?: string[];
+}
+
+export interface BrowserSession {
+  uuid: string;
+  provider: string;
+  status: string;
+  isBusy: boolean;
+  userManaged: boolean;
+  currentRunType: string | null;
+  currentRunId: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  lastActivityAt: string | null;
+  proxyCountry: string | null;
+  proxyCity: string | null;
+}
+
+export interface ListBrowserSession {
+  sessions: BrowserSession[];
+  totalCount: number;
+}
+
+export interface CloseBrowserSession {
+  status: string;
+  message: string;
 }

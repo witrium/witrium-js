@@ -30,46 +30,154 @@ yarn add @witrium/witrium
 The snippet below shows the **minimum** you need to get up-and-running:
 
 ```typescript
-import { WitriumClient, WorkflowRunStatus } from '@witrium/witrium';
+import { WitriumClient } from '@witrium/witrium';
 
-// 1. Provide your API endpoint & token (export these as env-vars in production)
+// 1. Provide your API token (export as env-var in production)
 const apiToken = "YOUR_WITRIUM_API_TOKEN"; // Obtain from dashboard
 
+// 2. Use callback pattern for automatic browser session management
 const client = new WitriumClient(apiToken);
 
 async function main() {
-  try {
-    // 2. Kick-off the **login** workflow and keep the browser alive
-    const login = await client.runWorkflow("login-workflow-id", {
+  await client.withBrowserSession(async (sessionId) => {
+    // Browser session is automatically created
+    // All workflows/talents automatically use this session
+    
+    // 3. Run workflows (browserSessionId is automatically injected)
+    await client.runWorkflowAndWait("login-workflow-id", {
       args: { username: "user@example.com", password: "secretPass!" },
-      keepSessionAlive: true, // 🔑 keep the browser running after login
     });
-
-    // 3. Block until the browser is *ready for reuse*
-    await client.waitUntilState(login.runId, WorkflowRunStatus.RUNNING, {
-      allInstructionsExecuted: true, // …and the last login step finished
-    });
-
-    // 4. Re-use that **same** browser session in a follow-up workflow
-    const scrape = await client.runWorkflow("dashboard-scrape-workflow-id", {
+    
+    // 4. Run another workflow in the same browser session
+    const scrape = await client.runWorkflowAndWait("dashboard-scrape-workflow-id", {
       args: { section: "sales" },
-      useExistingSession: login.runId, // 👈 same browser instance
+      skipGotoUrlInstruction: true,
     });
-
-    // 5. Wait for the scrape to finish and collect the results
-    const results = await client.waitUntilState(
-      scrape.runId,
-      WorkflowRunStatus.COMPLETED
-    );
-
-    console.log("Sales data:", results.result);
-  } catch (error) {
-    console.error("Error:", error);
-  }
+    
+    // 5. Browser session is automatically closed when callback completes
+    console.log("Sales data:", scrape.result);
+  });
 }
 
 main();
 ```
+
+---
+
+## Browser Session Management
+
+Witrium SDK provides a callback-based pattern that automatically handles browser lifecycle for you. This is the **recommended approach** for running workflows and/or talents that need to share browser state.
+
+### Automatic Session Management (Recommended)
+
+When you use `withBrowserSession()`, a browser session is automatically created when entering and closed when exiting. **All workflows and talents executed within the callback automatically use this session** - no need to pass `browserSessionId` explicitly:
+
+```typescript
+import { WitriumClient } from '@witrium/witrium';
+
+const client = new WitriumClient("your-api-token");
+
+async function run() {
+  await client.withBrowserSession(async (sessionId) => {
+    // Browser session automatically created
+    console.log(`Session ID: ${sessionId}`);
+    console.log(`Client session ID: ${client.sessionId}`); // Same as sessionId
+    
+    // All workflows/talents automatically use this session (browserSessionId auto-injected)
+    const result1 = await client.runWorkflowAndWait("workflow-1");
+    const result2 = await client.runTalent("talent-1");
+    
+    // You can still override if needed:
+    const result3 = await client.runWorkflowAndWait("workflow-2", {
+      browserSessionId: "different-session-id", // Explicit override
+    });
+    
+    // Session automatically closed on exit
+  });
+}
+```
+
+### Custom Session Options
+
+Configure the browser session with specific settings (These are options similar to the ones you'll find in the dashboard):
+
+```typescript
+import { WitriumClient } from '@witrium/witrium';
+
+const client = new WitriumClient("your-api-token");
+
+await client.withBrowserSession(async (sessionId) => {
+  // Browser session created with UK proxy and restored state
+  // browserSessionId is automatically set to sessionId
+  const result = await client.runWorkflowAndWait("workflow-id");
+}, {
+  provider: "omega",
+  useProxy: true,
+  proxyCountry: "uk",
+  useStates: ["my-saved-state"], // Restore browser state
+});
+```
+
+### Manual Session Management
+
+For advanced use cases, manage browser sessions explicitly:
+
+```typescript
+const client = new WitriumClient("your-api-token");
+
+async function run() {
+  // Create a browser session
+  const session = await client.createBrowserSession({
+    useProxy: true,
+  });
+  console.log(`Created session: ${session.uuid}`);
+
+  // List all active sessions
+  const sessions = await client.listBrowserSessions();
+  console.log(`Active sessions: ${sessions.totalCount}`);
+
+  // Get session details
+  const details = await client.getBrowserSession(session.uuid);
+  console.log(`Session status: ${details.status}`);
+
+  // Use session explicitly
+  const result = await client.runWorkflowAndWait("workflow-id", {
+    browserSessionId: session.uuid,
+  });
+
+  // Close session when done
+  await client.closeBrowserSession(session.uuid);
+}
+```
+
+### Important: Automatic Session Injection & `useStates` Behavior
+
+**When using `withBrowserSession()`, the session ID is automatically injected into all workflow and talent runs.** You can access it via `client.sessionId`.
+
+**When using a browser session, `useStates` is set at the session level, not the individual run level.**
+
+```typescript
+// use_states in session options applies to ALL runs
+await client.withBrowserSession(async (sessionId) => {
+  // browserSessionId is automatically set to sessionId
+  // No need to pass it explicitly!
+  const result = await client.runWorkflowAndWait("workflow-id", {
+    useStates: ["ignored"], // ❌ This is IGNORED when using a session
+  });
+}, {
+  useStates: ["state-from-session"], // ✅ This will be used
+});
+```
+
+If you need different `useStates` for different runs, create separate browser sessions.
+
+### Available Browser Session Methods
+
+- `createBrowserSession(options)` - Create a new browser session
+- `listBrowserSessions()` - List all active sessions
+- `getBrowserSession(sessionUuid)` - Get session details
+- `closeBrowserSession(sessionUuid, force?)` - Close a session
+- `withBrowserSession(callback, options?)` - Run callback with auto-managed session
 
 ---
 
@@ -79,23 +187,21 @@ main();
 
 1. **Submit** – your call returns instantly with a `runId`.
 2. **Poll / Wait** – use `waitUntilState()` (or `runWorkflowAndWait()`) to block until the run reaches:
-   • `WorkflowRunStatus.RUNNING` – the browser has spun-up and is ready (handy when you enabled `keepSessionAlive`).
+   • `WorkflowRunStatus.RUNNING` – the browser has spun-up and is ready.
    • `WorkflowRunStatus.COMPLETED` – the workflow has finished executing.
 3. **Chain or Fetch Results** – once the target state is reached you can either run another workflow (chaining sessions) or read the data via `getWorkflowResults()`.
 
 ### When to wait for which state?
 
-| Scenario | Recommended `targetStatus` | Extra parameters |
-|----------|----------------------------|------------------|
-| You **saved state** using `preserveState` | `COMPLETED` | – |
-| You **kept the session alive** using `keepSessionAlive` **and intend to reuse it** | `RUNNING` | `allInstructionsExecuted: true` |
+| Scenario | Recommended `targetStatus` |
+|----------|-----------------------------|
+| You want to wait till the workflow run has completed | `COMPLETED` |
+| You want to wait till the workflow has just started its run | `RUNNING` |
 
-> ⏳ **Tip:** For very long login flows (e.g. multi-factor auth) combine `minWaitTime` with `pollingInterval` to reduce server load.
+### Parallel vs. Serial Execution
 
-### Concurrency vs. Serial Execution
-
-• **State Preservation (`preserveState`)** – Each follow-up workflow spins up its **own** browser. Scale **horizontally** & run many in parallel.
-• **Session Persistence (`keepSessionAlive`)** – All follow-up workflows share **one** browser instance. Run them **serially** (until multi-tab support lands).
+• **Parallel Execution** – You can run the same workflow or talent in different `withBrowserSession()` calls and each will spin up a different browser for true parallelism.
+• **Serial Execution** – All workflows in the same `withBrowserSession()` callback share **one** browser session. They are to be run serially.
 
 ---
 
@@ -103,15 +209,17 @@ main();
 
 ### The Authentication Challenge
 
-A common pattern in web automation involves authentication: you need to log into a service first, then perform actions in the authenticated session. Witrium provides two powerful approaches to handle this:
+A common pattern in web automation involves authentication: you need to log into a service first, then perform actions in the authenticated session. Witrium provides several approaches:
 
-#### Approach 1: State Preservation (Concurrent-Friendly)
-- Best for: Running multiple post-login automations concurrently
-- How it works: Save browser state after login, then restore it in new browser instances
+#### Approach 1: State Preservation (Parallel-Friendly)
+- **Best for:** Running multiple post-login automations concurrently
+- **How it works:** Save browser state after login, then restore it in new browser instances
+- **Advantages:** Horizontal scaling, isolation between runs
 
-#### Approach 2: Session Persistence (Resource-Efficient)
-- Best for: Sequential automations that need to share the exact same browser session
-- How it works: Keep the browser alive after login, run subsequent automations in the same instance
+#### Approach 2: Shared Browser Session (Recommended)
+- **Best for:** Sequential automations that need to share the exact same browser session
+- **How it works:** Use `withBrowserSession()` to manage a browser session for multiple workflows
+- **Advantages:** Resource-efficient, automatic cleanup, simple API
 
 ## Session Management Patterns
 
@@ -134,99 +242,98 @@ const client = new WitriumClient("your-api-token");
 
 async function run() {
   // Step 1: Run login workflow and preserve the authenticated state
-  const loginResponse = await client.runWorkflow("login-workflow-id", {
-    args: { username: "user@example.com", password: "secure123" },
-    preserveState: "authenticated-session", // Save state with this name
+  await client.withBrowserSession(async (sessionId) => {
+    // browserSessionId automatically injected
+    await client.runWorkflowAndWait("login-workflow-id", {
+      args: { username: "user@example.com", password: "secure123" },
+      preserveState: "authenticated-session", // Save state with this name
+    });
   });
 
-  // Step 2: Wait for login to complete
-  await client.waitUntilState(
-    loginResponse.runId,
-    WorkflowRunStatus.COMPLETED
-  );
-
-  // Step 3: Run multiple post-login workflows concurrently
+  // Step 2: Run multiple post-login workflows concurrently
   // Each will spawn a new browser but restore the authenticated state
 
-  const [dashboardResponse, profileResponse] = await Promise.all([
+  const [dashboardResults, profileResults] = await Promise.all([
     // Workflow A: Extract data from dashboard
-    client.runWorkflow("dashboard-scraping-workflow-id", {
-      args: { report_type: "monthly" },
+    client.withBrowserSession(async (sessionId) => {
+      // browserSessionId automatically injected
+      return await client.runWorkflowAndWait("dashboard-scraping-workflow-id", {
+        args: { report_type: "monthly" },
+      });
+    }, {
       useStates: ["authenticated-session"], // Restore the saved state
     }),
+    
     // Workflow B: Update user profile (can run concurrently)
-    client.runWorkflow("profile-update-workflow-id", {
-      args: { new_email: "newemail@example.com" },
+    client.withBrowserSession(async (sessionId) => {
+      // browserSessionId automatically injected
+      return await client.runWorkflowAndWait("profile-update-workflow-id", {
+        args: { new_email: "newemail@example.com" },
+      });
+    }, {
       useStates: ["authenticated-session"], // Same state, different browser instance
-    })
+    }),
   ]);
 
-  // Both workflows are now running concurrently in separate browser instances
-  // but both have access to the authenticated session
+  // Both workflows ran concurrently in separate browser instances
+  // but both had access to the authenticated session
 }
 ```
 
-### Pattern 2: Persistent Session with Keep-Alive
+### Pattern 2: Shared Browser Session (Recommended)
 
-This approach keeps the browser instance alive after the login workflow completes, allowing subsequent workflows to run in the same browser session.
+This approach uses same browser instance across workflows. The browser session is created when entering and closed when exiting the callback.
 
 **Advantages:**
-- More resource-efficient (reuses same browser instance)
-- Maintains exact session continuity
-- No need to restore state (session never ends)
-- Faster execution for subsequent workflows
-
-**Limitations:**
-- Subsequent workflows must run serially (one after another)
-- Cannot run multiple post-login workflows concurrently in the same session
+- Simple and clean API
+- Automatic resource cleanup
+- Resource-efficient (reuses same browser instance)
+- No manual session lifecycle management
 
 **Use Case Example:**
 
 ```typescript
-import { WitriumClient, WorkflowRunStatus } from '@witrium/witrium';
+import { WitriumClient } from '@witrium/witrium';
 
 const client = new WitriumClient("your-api-token");
 
 async function run() {
-  // Step 1: Run login workflow and keep the browser session alive
-  const loginResponse = await client.runWorkflow("login-workflow-id", {
-    args: { username: "user@example.com", password: "secure123" },
-    keepSessionAlive: true, // Keep browser instance running
-  });
+  await client.withBrowserSession(async (sessionId) => {
+    // Browser session automatically created
+    // browserSessionId automatically set for all workflows/talents
 
-  // Step 2: Wait for login to complete and start running
-  // We wait for RUNNING status because the browser is kept alive
-  await client.waitUntilState(loginResponse.runId, WorkflowRunStatus.RUNNING, {
-    allInstructionsExecuted: true, // Ensure login steps are done
-  });
+    // Step 1: Run login workflow (navigates to login page and authenticates)
+    await client.runWorkflowAndWait("login-workflow-id", {
+      args: { username: "user@example.com", password: "secure123" },
+    });
+    console.log("Login completed");
 
-  // Step 3: Run subsequent workflows in the same browser session
-  // These must run serially, not concurrently
+    // Step 2: Run subsequent workflows - they automatically use the same session
+    // Use skipGotoUrlInstruction=true since the browser is already on the right page
+    
+    // Workflow A: Extract data from dashboard
+    const dashboardResults = await client.runWorkflowAndWait("dashboard-scraping-workflow-id", {
+      args: { report_type: "monthly" },
+      skipGotoUrlInstruction: true, // Already on the dashboard after login
+    });
+    console.log(`Dashboard data: ${dashboardResults.result}`);
 
-  // Workflow A: Extract data from dashboard
-  const dashboardResponse = await client.runWorkflow("dashboard-scraping-workflow-id", {
-    args: { report_type: "monthly" },
-    useExistingSession: loginResponse.runId, // Use the live session
-  });
+    // Workflow B: Update user profile
+    const profileResults = await client.runWorkflowAndWait("profile-update-workflow-id", {
+      args: { new_email: "newemail@example.com" },
+      skipGotoUrlInstruction: true, // Previous workflow left us on the right page
+    });
+    console.log("Profile updated");
 
-  // Wait for dashboard workflow to complete before next one
-  await client.waitUntilState(
-    dashboardResponse.runId,
-    WorkflowRunStatus.COMPLETED
-  );
-
-  // Workflow B: Update user profile (must wait for previous to complete)
-  const profileResponse = await client.runWorkflow("profile-update-workflow-id", {
-    args: { new_email: "newemail@example.com" },
-    useExistingSession: loginResponse.runId, // Same live session
+    // Browser session automatically closed on exit
   });
 }
 ```
 
 ### Choosing the Right Pattern
 
-| Factor | State Preservation | Session Persistence |
-|--------|-------------------|-------------------|
+| Factor | State Preservation | Shared Browser Session |
+|--------|-------------------|------------------------|
 | **Concurrency** | ✅ Multiple workflows can run simultaneously | ❌ Must run serially |
 | **Resource Usage** | Higher (multiple browser instances) | ✅ Lower (single browser instance) |
 | **Isolation** | ✅ Complete isolation between workflows | ❌ Shared session state |
@@ -243,142 +350,55 @@ import { WitriumClient, WorkflowRunStatus } from '@witrium/witrium';
 const client = new WitriumClient("your-api-token");
 
 async function extractCategoryData(category: string, stateName: string) {
-  try {
-    const response = await client.runWorkflow("category-scraper-workflow", {
-      args: { category },
-      useStates: [stateName],
-    });
+  return await client.withBrowserSession(async (sessionId) => {
+    try {
+      // browserSessionId automatically injected
+      const results = await client.runWorkflowAndWait("category-scraper-workflow", {
+        args: { category },
+      });
 
-    const results = await client.waitUntilState(
-      response.runId,
-      WorkflowRunStatus.COMPLETED
-    );
-
-    return { category, data: results.result };
-  } catch (error) {
-    console.error(`Failed to extract ${category}:`, error);
-    return { category, error: String(error) };
-  }
+      return { category, data: results.result };
+    } catch (error) {
+      console.error(`Failed to extract ${category}:`, error);
+      return { category, error: String(error) };
+    }
+  }, {
+    useStates: [stateName],
+  });
 }
 
 async function run() {
   console.log("Logging into e-commerce platform...");
+  
   // Step 1: Login and save state
-  const loginResponse = await client.runWorkflow("ecommerce-login-workflow", {
-    args: { email: "seller@example.com", password: "secure123" },
-    preserveState: "ecommerce-authenticated",
+  await client.withBrowserSession(async (sessionId) => {
+    // browserSessionId automatically injected
+    await client.runWorkflowAndWait("ecommerce-login-workflow", {
+      args: { email: "seller@example.com", password: "secure123" },
+      preserveState: "ecommerce-authenticated",
+    });
   });
-
-  // Wait for login completion
-  await client.waitUntilState(
-    loginResponse.runId,
-    WorkflowRunStatus.COMPLETED
-  );
   console.log("Login completed, state preserved");
 
   // Step 2: Extract data from multiple categories concurrently
   const categories = ["electronics", "clothing", "home-garden", "books", "sports"];
-  
-  // Submit all category extraction tasks concurrently
+
   const results = await Promise.all(
     categories.map(category => extractCategoryData(category, "ecommerce-authenticated"))
   );
 
   console.log(`Extracted data from ${results.length} categories`);
   results.forEach(result => {
-    if (result.error) {
+    if ('error' in result) {
       console.error(`Error in ${result.category}: ${result.error}`);
     } else {
-      console.log(`${result.category}: ${Array.isArray(result.data) ? result.data.length : 'some'} items extracted`);
+      console.log(`${result.category}: extracted successfully`);
     }
   });
 }
 ```
 
-### Example 2: Banking Workflow (Session Persistence)
-
-```typescript
-import { WitriumClient, WorkflowRunStatus } from '@witrium/witrium';
-
-const client = new WitriumClient("your-api-token");
-
-async function run() {
-  // Step 1: Secure login with 2FA
-  console.log("Initiating secure banking login...");
-  const loginResponse = await client.runWorkflow("bank-login-with-2fa-workflow", {
-    args: {
-      username: "customer123",
-      password: "secure456",
-      phone_number: "+1234567890", // For 2FA
-    },
-    keepSessionAlive: true, // Keep session for subsequent operations
-  });
-
-  // Wait for login and 2FA to complete
-  console.log("Waiting for login and 2FA completion...");
-  const loginResults = await client.waitUntilState(
-    loginResponse.runId,
-    WorkflowRunStatus.RUNNING,
-    {
-      allInstructionsExecuted: true,
-      minWaitTime: 30000, // 30s - 2FA usually takes some time
-    }
-  );
-  console.log("Secure login completed");
-
-  // Step 2: Check account balances
-  console.log("Checking account balances...");
-  const balanceResponse = await client.runWorkflow("check-balances-workflow", {
-    args: { account_types: ["checking", "savings", "credit"] },
-    useExistingSession: loginResponse.runId,
-  });
-
-  const balanceResults = await client.waitUntilState(
-    balanceResponse.runId,
-    WorkflowRunStatus.COMPLETED
-  );
-  console.log("Account balances retrieved:", balanceResults.result);
-
-  // Step 3: Download transaction history
-  console.log("Downloading transaction history...");
-  const transactionResponse = await client.runWorkflow("download-transactions-workflow", {
-    args: {
-      date_range: "last_30_days",
-      format: "csv",
-      accounts: ["checking", "savings"],
-    },
-    useExistingSession: loginResponse.runId,
-  });
-
-  await client.waitUntilState(
-    transactionResponse.runId,
-    WorkflowRunStatus.COMPLETED
-  );
-  console.log("Transaction history downloaded");
-
-  // Step 4: Generate financial report
-  console.log("Generating financial report...");
-  const reportResponse = await client.runWorkflow("generate-financial-report-workflow", {
-    args: {
-      report_type: "monthly_summary",
-      include_charts: true,
-    },
-    useExistingSession: loginResponse.runId,
-  });
-
-  await client.waitUntilState(
-    reportResponse.runId,
-    WorkflowRunStatus.COMPLETED
-  );
-
-  console.log("Financial report generated successfully");
-  console.log("All banking operations completed in the same secure session");
-}
-```
-
-## Running Talents
-
-In addition to workflows, you can execute "Talents" directly. Talents are pre-defined capabilities or simpler automation units that can be executed with specific arguments.
+### Example 2: Banking Workflow (Shared Browser Session)
 
 ```typescript
 import { WitriumClient } from '@witrium/witrium';
@@ -386,22 +406,141 @@ import { WitriumClient } from '@witrium/witrium';
 const client = new WitriumClient("your-api-token");
 
 async function run() {
-  // Run a talent by ID with its execution schema
-  const result = await client.runTalent("talent-uuid", {
-    args: { key: "value" },
-    useStates: ["state-id"],
-    preserveState: "new-state-name",
-    keepSessionAlive: true,
-    useExistingSession: "existing-run-id",
+  await client.withBrowserSession(async (sessionId) => {
+    // Browser session automatically created
+    // browserSessionId automatically set for all workflows
+    console.log(`Browser session created: ${sessionId}`);
+    
+    // Step 1: Secure login with 2FA
+    console.log("Initiating secure banking login...");
+    await client.runWorkflowAndWait("bank-login-with-2fa-workflow", {
+      args: {
+        username: "customer123",
+        password: "secure456",
+        phone_number: "+1234567890", // For 2FA
+      },
+    });
+    console.log("Secure login completed");
+
+    // Step 2: Check account balances
+    // Skip initial navigation - login workflow already brought us to the dashboard
+    console.log("Checking account balances...");
+    const balanceResults = await client.runWorkflowAndWait("check-balances-workflow", {
+      args: { account_types: ["checking", "savings", "credit"] },
+      skipGotoUrlInstruction: true,
+    });
+    console.log(`Account balances retrieved: ${balanceResults.result}`);
+
+    // Step 3: Download transaction history
+    console.log("Downloading transaction history...");
+    await client.runWorkflowAndWait("download-transactions-workflow", {
+      args: {
+        date_range: "last_30_days",
+        format: "csv",
+        accounts: ["checking", "savings"],
+      },
+      skipGotoUrlInstruction: true,
+    });
+    console.log("Transaction history downloaded");
+
+    // Step 4: Generate financial report
+    console.log("Generating financial report...");
+    await client.runWorkflowAndWait("generate-financial-report-workflow", {
+      args: {
+        report_type: "monthly_summary",
+        include_charts: true,
+      },
+      skipGotoUrlInstruction: true,
+    });
+
+    console.log("Financial report generated successfully");
+    console.log("All banking operations completed in the same secure session");
+    // Browser session automatically closed on exit
   });
-  
-  console.log("Talent status:", result.status);
-  console.log("Talent result:", result.result);
-  if (result.errorMessage) {
-    console.error("Error:", result.errorMessage);
-  }
 }
 ```
+
+## Running Talents
+
+In addition to workflows, you can execute "Talents" directly. Talents are pre-defined capabilities or simpler automation units that can be executed with specific arguments. When using `withBrowserSession()`, talents automatically use the managed browser session.
+
+```typescript
+import { WitriumClient } from '@witrium/witrium';
+
+const client = new WitriumClient("your-api-token");
+
+async function run() {
+  await client.withBrowserSession(async (sessionId) => {
+    // Browser session automatically created
+    // browserSessionId automatically injected for all talents
+    
+    // Run a talent by ID with options
+    const result = await client.runTalent("talent-uuid", {
+      args: { key: "value" },
+    });
+
+    // The result is a TalentRunResult object
+    console.log(`Status: ${result.status}`);
+    console.log(`Result data: ${result.result}`);
+    if (result.errorMessage) {
+      console.log(`Error: ${result.errorMessage}`);
+    }
+    // Browser session automatically closed and cleaned up
+  });
+}
+```
+
+### Combining Workflows and Talents in the Same Session
+
+A common use case is running both workflows and talents in the same browser session context. This allows you to chain a workflow (e.g., login or navigation) with talent execution that operates on the resulting browser state.
+
+```typescript
+import { WitriumClient } from '@witrium/witrium';
+
+const client = new WitriumClient("your-api-token");
+
+async function run() {
+  await client.withBrowserSession(async (sessionId) => {
+    // Browser session automatically created
+    // browserSessionId automatically injected for all workflows/talents
+    console.log(`Session ID: ${sessionId}`);
+
+    // Step 1: Run a workflow to set up the browser state (e.g., login, navigate)
+    console.log("Running setup workflow...");
+    const workflowResult = await client.runWorkflowAndWait("setup-workflow-id", {
+      args: { username: "user@example.com", password: "secure123" },
+    });
+    console.log(`Workflow completed: ${workflowResult.status}`);
+
+    // Step 2: Run a talent in the same browser session
+    // The talent will operate on the browser state left by the workflow
+    console.log("Running talent...");
+    const talentResult = await client.runTalent("data-extraction-talent-id", {
+      args: { product_id: "ABC123", include_reviews: true },
+    });
+    console.log(`Talent result: ${talentResult.result}`);
+
+    // Step 3: Run another workflow using the same session
+    // Use skipGotoUrlInstruction since we're already on the relevant page
+    console.log("Running follow-up workflow...");
+    const followupResult = await client.runWorkflowAndWait("cleanup-workflow-id", {
+      skipGotoUrlInstruction: true, // Browser is already where we need it
+    });
+    console.log(`Follow-up completed: ${followupResult.status}`);
+
+    // Check session details at any point
+    const session = await client.getBrowserSession(sessionId);
+    console.log(`Session status: ${session.status}, Busy: ${session.isBusy}`);
+  });
+  // Browser session automatically closed on exit
+  console.log("Session closed");
+}
+```
+
+This pattern is useful when:
+- A workflow handles complex multi-step setup (login, navigation, form filling)
+- A talent extracts specific data or performs a focused action
+- You need to chain multiple operations that depend on shared browser state
 
 ## Basic Usage
 
@@ -445,7 +584,7 @@ async function run() {
 ### Real-time Progress Tracking
 
 ```typescript
-import { WitriumClient, WorkflowRunResults } from '@witrium/witrium';
+import { WitriumClient, WorkflowRunResult } from '@witrium/witrium';
 
 const client = new WitriumClient("your-api-token");
 
@@ -454,7 +593,7 @@ async function run() {
     // Run workflow with progress tracking
     const result = await client.runWorkflowAndWait("workflow-uuid", {
       args: { key1: "value1" },
-      onProgress: (intermediateResults: WorkflowRunResults) => {
+      onProgress: (intermediateResults: WorkflowRunResult) => {
         console.log(`Status: ${intermediateResults.status}`);
         intermediateResults.executions?.forEach(execution => {
           if (execution.status === "C") {
@@ -475,10 +614,10 @@ async function run() {
 ### Using Callbacks for Custom Monitoring
 
 ```typescript
-import { WitriumClient, WorkflowRunResults } from '@witrium/witrium';
+import { WitriumClient, WorkflowRunResult } from '@witrium/witrium';
 
 // Define a custom progress callback
-function monitorWorkflowProgress(result: WorkflowRunResults) {
+function monitorWorkflowProgress(result: WorkflowRunResult) {
   const status = result.status;
   const executions = result.executions || [];
   
@@ -521,9 +660,22 @@ async function run() {
 ```typescript
 new WitriumClient(
   apiToken: string,         // API token for authentication
-  baseUrl?: string,         // Optional base URL
+  baseUrl?: string,         // Optional base URL (default: "https://api.witrium.com")
   timeout?: number          // Request timeout in milliseconds (default: 60000)
 )
+```
+
+#### Properties
+
+**`sessionId`** (read-only)
+
+Returns the current active session ID set by `withBrowserSession()`, or `null` if not in a session context.
+
+```typescript
+await client.withBrowserSession(async (sessionId) => {
+  console.log(client.sessionId === sessionId); // true
+});
+console.log(client.sessionId); // null
 ```
 
 #### Core Methods
@@ -549,8 +701,8 @@ interface WorkflowRunOptions {
   preserveState?: string;
   noIntelligence?: boolean;
   recordSession?: boolean;
-  keepSessionAlive?: boolean;
-  useExistingSession?: string;
+  browserSessionId?: string;
+  skipGotoUrlInstruction?: boolean;
 }
 ```
 
@@ -560,19 +712,18 @@ interface WorkflowRunOptions {
 - `options`: (Optional) Configuration options for the workflow run
   - `args`: Arguments to pass to the workflow
   - `files`: Files to upload (array of `{ filename: string, data: string }` where data is base64 encoded)
-  - `useStates`: List of saved state names to restore at the start of this workflow
+  - `useStates`: List of saved state names to restore (ignored if browserSessionId is set)
   - `preserveState`: Name to save the browser state as after workflow completion
   - `noIntelligence`: Disable AI assistance
   - `recordSession`: Record the browser session
-  - `keepSessionAlive`: If true, keeps the browser instance running after workflow completion
-  - `useExistingSession`: Workflow run ID of existing session to use
+  - `browserSessionId`: Browser session UUID to use
+  - `skipGotoUrlInstruction`: Skip the initial URL navigation step (useful when chaining workflows)
 
-**State Management:**
+**Session Management:**
 
-- `preserveState`: Save the browser state with this name after workflow completion. Other workflows can then restore this state using `useStates`.
-- `useStates`: List of previously saved state names to restore at the start of this workflow.
-- `keepSessionAlive`: If true, keeps the browser instance running after workflow completion.
-- `useExistingSession`: Run this workflow in an existing browser session (identified by workflow run ID).
+- `browserSessionId`: UUID of the browser session to use. **When using `withBrowserSession()`, this is automatically set to the active session ID** - no need to pass it explicitly. You can override by explicitly providing a different session ID.
+- `preserveState`: Save the browser state with this name after workflow completion. Other workflows can restore this state using `useStates`.
+- `useStates`: List of previously saved state names to restore. **Note:** This is ignored if `browserSessionId` is provided - the session's use_states takes precedence.
 
 ##### runTalent()
 
@@ -593,8 +744,7 @@ interface TalentRunOptions {
   files?: FileUpload[];
   useStates?: string[];
   preserveState?: string;
-  keepSessionAlive?: boolean;
-  useExistingSession?: string;
+  browserSessionId?: string;
 }
 ```
 
@@ -604,10 +754,9 @@ interface TalentRunOptions {
 - `options`: (Optional) Configuration options for the talent run
   - `args`: Arguments to pass to the talent
   - `files`: Files to upload
-  - `useStates`: List of saved state names to restore
+  - `useStates`: List of saved state names to restore (ignored if browserSessionId is set)
   - `preserveState`: Name to save the browser state as
-  - `keepSessionAlive`: Keep browser alive after completion
-  - `useExistingSession`: Run ID of existing session to use
+  - `browserSessionId`: Browser session UUID to use. **Automatically set when using `withBrowserSession()`**
 
 ##### waitUntilState()
 
@@ -618,7 +767,7 @@ async waitUntilState(
   runId: string,
   targetStatus: WorkflowStatus,
   options?: WaitUntilStateOptions
-): Promise<WorkflowRunResults>
+): Promise<WorkflowRunResult>
 ```
 
 **WaitUntilStateOptions:**
@@ -638,7 +787,7 @@ interface WaitUntilStateOptions {
 - `targetStatus`: Use `WorkflowRunStatus` constants (PENDING, RUNNING, COMPLETED, FAILED, CANCELLED)
 - `options`: (Optional) Configuration options for waiting
   - `allInstructionsExecuted`: When true, also waits for all individual execution steps to complete
-  - `minWaitTime`: Minimum milliseconds to wait before polling starts - useful for long-running workflows
+  - `minWaitTime`: Minimum milliseconds to wait before polling starts
   - `pollingInterval`: Milliseconds between polling attempts (default: 2000)
   - `timeout`: Maximum milliseconds to wait (default: 60000)
 
@@ -650,7 +799,7 @@ Run a workflow and wait for it to complete (or reach a terminal status).
 async runWorkflowAndWait(
   workflowId: string,
   options?: RunWorkflowAndWaitOptions
-): Promise<WorkflowRunResults | WorkflowRunResults[]>
+): Promise<WorkflowRunResult | WorkflowRunResult[]>
 ```
 
 **RunWorkflowAndWaitOptions:**
@@ -660,7 +809,7 @@ interface RunWorkflowAndWaitOptions extends WorkflowRunOptions {
   pollingInterval?: number;
   timeout?: number;
   returnIntermediateResults?: boolean;
-  onProgress?: (results: WorkflowRunResults) => void;
+  onProgress?: (results: WorkflowRunResult) => void;
 }
 ```
 
@@ -672,6 +821,74 @@ interface RunWorkflowAndWaitOptions extends WorkflowRunOptions {
   - `timeout`: Maximum milliseconds to wait (default: 300000)
   - `returnIntermediateResults`: If true, returns array of all intermediate results (default: false)
   - `onProgress`: Callback function called on each polling iteration with current results
+
+##### Browser Session Methods
+
+**createBrowserSession()**
+
+Create a standalone browser session.
+
+```typescript
+async createBrowserSession(
+  options?: BrowserSessionCreateOptions
+): Promise<BrowserSession>
+```
+
+**BrowserSessionCreateOptions:**
+
+```typescript
+interface BrowserSessionCreateOptions {
+  provider?: string;        // default: "omega"
+  useProxy?: boolean;       // default: false
+  proxyCountry?: string;    // default: "us"
+  proxyCity?: string;       // default: "New York"
+  useStates?: string[];     // default: undefined
+}
+```
+
+**listBrowserSessions()**
+
+List all active browser sessions.
+
+```typescript
+async listBrowserSessions(): Promise<ListBrowserSession>
+```
+
+**getBrowserSession()**
+
+Get details of a specific browser session.
+
+```typescript
+async getBrowserSession(sessionUuid: string): Promise<BrowserSession>
+```
+
+**closeBrowserSession()**
+
+Close a browser session.
+
+```typescript
+async closeBrowserSession(
+  sessionUuid: string,
+  force?: boolean  // default: false
+): Promise<CloseBrowserSession>
+```
+
+**withBrowserSession()**
+
+Run a callback with an automatically managed browser session. **All workflows and talents executed within the callback automatically use this session** - the session ID is auto-injected into `browserSessionId` unless explicitly overridden.
+
+```typescript
+async withBrowserSession<T>(
+  callback: (sessionId: string) => Promise<T>,
+  options?: BrowserSessionCreateOptions
+): Promise<T>
+```
+
+**Automatic Session Injection:**
+- Sets `client.sessionId` to the created session UUID
+- All `runWorkflow()` and `runTalent()` calls automatically use this session
+- Session is automatically closed on exit (even on error)
+- Previous session ID is restored after exit (supports nesting)
 
 ##### Other Methods
 
@@ -690,6 +907,9 @@ WorkflowRunStatus.RUNNING      // "R" - Workflow is executing
 WorkflowRunStatus.COMPLETED    // "C" - Workflow finished successfully
 WorkflowRunStatus.FAILED       // "F" - Workflow failed
 WorkflowRunStatus.CANCELLED    // "X" - Workflow was cancelled
+
+// Helper lists
+WorkflowRunStatus.TERMINAL_STATUSES  // [COMPLETED, FAILED, CANCELLED]
 ```
 
 #### AgentExecutionStatus
@@ -716,7 +936,7 @@ AgentExecutionStatus.CANCELLED    // "X" - Execution step cancelled
 }
 ```
 
-#### WorkflowRunResults
+#### WorkflowRunResult
 
 ```typescript
 {
@@ -760,6 +980,43 @@ AgentExecutionStatus.CANCELLED    // "X" - Execution step cancelled
 }
 ```
 
+#### BrowserSession
+
+```typescript
+{
+  uuid: string;
+  provider: string;
+  status: string;  // "active" or "closed"
+  isBusy: boolean;
+  userManaged: boolean;
+  currentRunType: string | null;  // "workflow", "talent", or null
+  currentRunId: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  lastActivityAt: string | null;
+  proxyCountry: string | null;
+  proxyCity: string | null;
+}
+```
+
+#### ListBrowserSession
+
+```typescript
+{
+  sessions: BrowserSession[];
+  totalCount: number;
+}
+```
+
+#### CloseBrowserSession
+
+```typescript
+{
+  status: string;
+  message: string;
+}
+```
+
 ### Exception Handling
 
 ```typescript
@@ -797,46 +1054,123 @@ async function run() {
 }
 ```
 
+This is particularly useful for:
+- Long-running workflows that are no longer needed
+- Error recovery scenarios
+- Resource management (freeing up browser sessions)
+- User-initiated cancellations in interactive applications
+
 ## Best Practices
 
-### 1. Error Handling
+### 1. Always Use Automatic Session Management
 
-Always wrap your API calls in try/catch blocks to handle potential network issues or API errors.
+```typescript
+// ✅ Good - Automatically closes session and injects sessionId
+await client.withBrowserSession(async (sessionId) => {
+  // browserSessionId is automatically injected!
+  const results = await client.runWorkflowAndWait("workflow-id");
+});
+
+// ❌ Bad - Manual cleanup required
+const session = await client.createBrowserSession();
+const results = await client.runWorkflowAndWait("workflow-id", {
+  browserSessionId: session.uuid,
+});
+await client.closeBrowserSession(session.uuid); // Easy to forget!
+```
 
 ### 2. Choose the Right Session Management Pattern
 
 ```typescript
-// ✅ For concurrent operations - use state preservation
-for (const category of categories) {
-  await client.runWorkflow("scraper", {
-    args: { category },
-    useStates: ["logged-in-state"], // Each runs in new browser
+// ✅ For most use cases - use a shared browser session (recommended)
+await client.withBrowserSession(async (sessionId) => {
+  // All workflows automatically share the same browser session
+  // browserSessionId is automatically injected!
+  const result1 = await client.runWorkflowAndWait("login-workflow");
+  const result2 = await client.runWorkflowAndWait("scrape-workflow", {
+    skipGotoUrlInstruction: true,
   });
-}
+  // Session automatically cleaned up
+});
 
-// ✅ For sequential operations - use session persistence
-const loginRun = await client.runWorkflow("workflow-id", {
-  keepSessionAlive: true,
-});
-await client.waitUntilState(loginRun.runId, WorkflowRunStatus.RUNNING);
-await client.runWorkflow("next-workflow-id", {
-  useExistingSession: loginRun.runId, // Same browser
-});
+// ✅ For concurrent operations - use state preservation
+const categories = ["electronics", "clothing", "books"];
+await Promise.all(
+  categories.map(category =>
+    client.withBrowserSession(async (sessionId) => {
+      // browserSessionId is automatically injected!
+      return await client.runWorkflowAndWait("scraper", {
+        args: { category },
+      });
+    }, {
+      useStates: ["logged-in-state"], // Each runs in new browser
+    })
+  )
+);
 ```
 
-### 3. Use Appropriate Timeouts
-
-When using `runWorkflowAndWait` or `waitUntilState`, adjust the timeout based on your workflow's complexity.
+### 3. Implement Proper Error Handling
 
 ```typescript
+import { WitriumClientException } from '@witrium/witrium';
+
+async function runWorkflowWithRetry(
+  client: WitriumClient,
+  workflowId: string,
+  args: Record<string, any>,
+  maxRetries: number = 3
+) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await client.runWorkflowAndWait(workflowId, {
+        args,
+        timeout: 300000,
+      });
+    } catch (error) {
+      if (error instanceof WitriumClientException) {
+        if (attempt === maxRetries - 1) throw error;
+        console.warn(`Attempt ${attempt + 1} failed: ${error.message}. Retrying...`);
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+      } else {
+        throw error;
+      }
+    }
+  }
+}
+```
+
+### 4. Use Appropriate Timeouts
+
+```typescript
+// ✅ Default: Reasonable timeout (5 minutes)
+await client.runWorkflowAndWait("workflow-id", {
+  timeout: 300000,
+});
+
 // ✅ Adjust timeouts based on workflow complexity
 await client.runWorkflowAndWait("simple-data-extraction", {
-  timeout: 60000 // 1 minute
+  timeout: 60000, // 1 minute
 });
 
 await client.runWorkflowAndWait("complex-multi-page-workflow", {
   timeout: 600000, // 10 minutes
-  pollingInterval: 10000 // Poll less frequently
+  pollingInterval: 10000, // Poll less frequently
+});
+```
+
+### 5. Monitor Progress for Long-Running Workflows
+
+```typescript
+// ✅ Use callbacks for visibility into long-running processes
+const logProgress = (result: WorkflowRunResult) => {
+  const completed = result.executions?.filter(ex => ex.status === "C").length || 0;
+  const total = result.executions?.length || 0;
+  console.log(`Progress: ${completed}/${total} steps completed`);
+};
+
+await client.runWorkflowAndWait("long-running-workflow", {
+  onProgress: logProgress,
+  pollingInterval: 10000, // Poll less frequently
 });
 ```
 

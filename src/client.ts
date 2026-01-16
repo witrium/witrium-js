@@ -9,6 +9,10 @@ import {
   TalentRunOptions,
   WaitUntilStateOptions,
   RunWorkflowAndWaitOptions,
+  BrowserSessionCreateOptions,
+  BrowserSession,
+  ListBrowserSession,
+  CloseBrowserSession,
 } from "./types";
 import { WitriumClientException } from "./errors";
 import { AgentExecutionStatus, WorkflowRunStatus } from "./constants";
@@ -18,6 +22,7 @@ const DEFAULT_TIMEOUT = 60000; // 60 seconds
 
 export class WitriumClient {
   private client: AxiosInstance;
+  private _activeSessionId: string | null = null;
 
   constructor(
     apiToken: string,
@@ -32,6 +37,13 @@ export class WitriumClient {
         "Content-Type": "application/json",
       },
     });
+  }
+
+  /**
+   * Get the current active session ID (set by withBrowserSession)
+   */
+  get sessionId(): string | null {
+    return this._activeSessionId;
   }
 
   private async _extractErrorDetail(error: any): Promise<string> {
@@ -54,9 +66,9 @@ export class WitriumClient {
       return obj;
     }
     if (Array.isArray(obj)) {
-      return obj.map(item => this._transformKeysToCamelCase(item));
+      return obj.map((item) => this._transformKeysToCamelCase(item));
     }
-    if (typeof obj === 'object' && obj.constructor === Object) {
+    if (typeof obj === "object" && obj.constructor === Object) {
       const transformed: Record<string, any> = {};
       for (const key in obj) {
         if (obj.hasOwnProperty(key)) {
@@ -75,6 +87,10 @@ export class WitriumClient {
   ): Promise<WorkflowRunSubmitted> {
     const url = `/v1/workflows/${workflowId}/run`;
     try {
+      // Auto-inject active session ID if not explicitly provided
+      const browserSessionId =
+        options.browserSessionId ?? this._activeSessionId;
+
       // Build payload with snake_case keys for the server
       const payload: Record<string, any> = {};
       if (options.args !== undefined) payload.args = options.args;
@@ -87,10 +103,10 @@ export class WitriumClient {
         payload.no_intelligence = options.noIntelligence;
       if (options.recordSession !== undefined)
         payload.record_session = options.recordSession;
-      if (options.keepSessionAlive !== undefined)
-        payload.keep_session_alive = options.keepSessionAlive;
-      if (options.useExistingSession !== undefined)
-        payload.use_existing_session = options.useExistingSession;
+      if (browserSessionId !== undefined && browserSessionId !== null)
+        payload.browser_session_id = browserSessionId;
+      if (options.skipGotoUrlInstruction !== undefined)
+        payload.skip_goto_url_instruction = options.skipGotoUrlInstruction;
 
       const response = await this.client.post(url, payload);
       return this._transformKeysToCamelCase(response.data);
@@ -127,7 +143,8 @@ export class WitriumClient {
   ): Promise<WorkflowRunResult | WorkflowRunResult[]> {
     const timeout = options.timeout ?? 300000;
     const pollingInterval = options.pollingInterval ?? 5000;
-    const returnIntermediateResults = options.returnIntermediateResults ?? false;
+    const returnIntermediateResults =
+      options.returnIntermediateResults ?? false;
     const onProgress = options.onProgress ?? (() => {});
 
     const runResponse = await this.runWorkflow(workflowId, {
@@ -137,8 +154,8 @@ export class WitriumClient {
       preserveState: options.preserveState,
       noIntelligence: options.noIntelligence,
       recordSession: options.recordSession,
-      keepSessionAlive: options.keepSessionAlive,
-      useExistingSession: options.useExistingSession,
+      browserSessionId: options.browserSessionId,
+      skipGotoUrlInstruction: options.skipGotoUrlInstruction,
     });
     const { runId } = runResponse;
     const startTime = Date.now();
@@ -254,14 +271,20 @@ export class WitriumClient {
   ): Promise<TalentRunResult> {
     const url = `/v1/talents/${talentId}/run`;
     try {
+      // Auto-inject active session ID if not explicitly provided
+      const browserSessionId =
+        options.browserSessionId ?? this._activeSessionId;
+
       // Build payload with snake_case keys for the server
       const payload: Record<string, any> = {};
       if (options.args !== undefined) payload.args = options.args;
       if (options.files !== undefined) payload.files = options.files;
-      if (options.useStates !== undefined) payload.use_states = options.useStates;
-      if (options.preserveState !== undefined) payload.preserve_state = options.preserveState;
-      if (options.keepSessionAlive !== undefined) payload.keep_session_alive = options.keepSessionAlive;
-      if (options.useExistingSession !== undefined) payload.use_existing_session = options.useExistingSession;
+      if (options.useStates !== undefined)
+        payload.use_states = options.useStates;
+      if (options.preserveState !== undefined)
+        payload.preserve_state = options.preserveState;
+      if (browserSessionId !== undefined && browserSessionId !== null)
+        payload.browser_session_id = browserSessionId;
 
       const response = await this.client.post(url, payload);
       return this._transformKeysToCamelCase(response.data);
@@ -273,6 +296,112 @@ export class WitriumClient {
       throw new WitriumClientException(
         `Error running talent: ${errorDetail} (Status code: ${statusCode})`
       );
+    }
+  }
+
+  async createBrowserSession(
+    options: BrowserSessionCreateOptions = {}
+  ): Promise<BrowserSession> {
+    const url = "/v1/browser-sessions";
+    try {
+      // Build payload with snake_case keys for the server
+      const payload: Record<string, any> = {};
+      if (options.provider !== undefined) payload.provider = options.provider;
+      if (options.useProxy !== undefined) payload.use_proxy = options.useProxy;
+      if (options.proxyCountry !== undefined)
+        payload.proxy_country = options.proxyCountry;
+      if (options.proxyCity !== undefined)
+        payload.proxy_city = options.proxyCity;
+      if (options.useStates !== undefined)
+        payload.use_states = options.useStates;
+
+      const response = await this.client.post(url, payload);
+      return this._transformKeysToCamelCase(response.data);
+    } catch (error) {
+      const errorDetail = await this._extractErrorDetail(error);
+      const statusCode = axios.isAxiosError(error)
+        ? error.response?.status
+        : "unknown";
+      throw new WitriumClientException(
+        `Error creating browser session: ${errorDetail} (Status code: ${statusCode})`
+      );
+    }
+  }
+
+  async listBrowserSessions(): Promise<ListBrowserSession> {
+    const url = "/v1/browser-sessions";
+    try {
+      const response = await this.client.get(url);
+      return this._transformKeysToCamelCase(response.data);
+    } catch (error) {
+      const errorDetail = await this._extractErrorDetail(error);
+      const statusCode = axios.isAxiosError(error)
+        ? error.response?.status
+        : "unknown";
+      throw new WitriumClientException(
+        `Error listing browser sessions: ${errorDetail} (Status code: ${statusCode})`
+      );
+    }
+  }
+
+  async getBrowserSession(sessionUuid: string): Promise<BrowserSession> {
+    const url = `/v1/browser-sessions/${sessionUuid}`;
+    try {
+      const response = await this.client.get(url);
+      return this._transformKeysToCamelCase(response.data);
+    } catch (error) {
+      const errorDetail = await this._extractErrorDetail(error);
+      const statusCode = axios.isAxiosError(error)
+        ? error.response?.status
+        : "unknown";
+      throw new WitriumClientException(
+        `Error getting browser session: ${errorDetail} (Status code: ${statusCode})`
+      );
+    }
+  }
+
+  async closeBrowserSession(
+    sessionUuid: string,
+    force: boolean = false
+  ): Promise<CloseBrowserSession> {
+    const url = `/v1/browser-sessions/${sessionUuid}`;
+    try {
+      const response = await this.client.delete(url, {
+        params: force ? { force: true } : {},
+      });
+      return this._transformKeysToCamelCase(response.data);
+    } catch (error) {
+      const errorDetail = await this._extractErrorDetail(error);
+      const statusCode = axios.isAxiosError(error)
+        ? error.response?.status
+        : "unknown";
+      throw new WitriumClientException(
+        `Error closing browser session: ${errorDetail} (Status code: ${statusCode})`
+      );
+    }
+  }
+
+  async withBrowserSession<T>(
+    callback: (sessionId: string) => Promise<T>,
+    options: BrowserSessionCreateOptions = {}
+  ): Promise<T> {
+    const session = await this.createBrowserSession(options);
+    const previousSessionId = this._activeSessionId;
+    this._activeSessionId = session.uuid;
+
+    try {
+      return await callback(session.uuid);
+    } finally {
+      // Restore previous session ID (for nested calls)
+      this._activeSessionId = previousSessionId;
+
+      // Use force=true to ensure cleanup even if session is busy
+      // Swallow errors during cleanup to not mask the original error
+      try {
+        await this.closeBrowserSession(session.uuid, true);
+      } catch {
+        // Ignore cleanup errors
+      }
     }
   }
 }
