@@ -12,7 +12,7 @@ import {
   BrowserSessionCreateOptions,
   BrowserSession,
   ListBrowserSession,
-  CloseBrowserSession,
+  BrowserSessionCloseOptions,
 } from "./types";
 import { WitriumClientException } from "./errors";
 import { AgentExecutionStatus, WorkflowRunStatus } from "./constants";
@@ -316,6 +316,8 @@ export class WitriumClient {
         payload.proxy_city = options.proxyCity;
       if (options.useStates !== undefined)
         payload.use_states = options.useStates;
+      if (options.preserveState !== undefined)
+        payload.preserve_state = options.preserveState;
 
       const response = await this.client.post(url, payload);
       return this._transformKeysToCamelCase(response.data);
@@ -346,8 +348,8 @@ export class WitriumClient {
     }
   }
 
-  async getBrowserSession(sessionUuid: string): Promise<BrowserSession> {
-    const url = `/v1/browser-sessions/${sessionUuid}`;
+  async getBrowserSession(sessionId: string): Promise<BrowserSession> {
+    const url = `/v1/browser-sessions/${sessionId}`;
     try {
       const response = await this.client.get(url);
       return this._transformKeysToCamelCase(response.data);
@@ -363,14 +365,18 @@ export class WitriumClient {
   }
 
   async closeBrowserSession(
-    sessionUuid: string,
-    force: boolean = false
-  ): Promise<CloseBrowserSession> {
-    const url = `/v1/browser-sessions/${sessionUuid}`;
+    sessionId: string,
+    options: BrowserSessionCloseOptions = {}
+  ): Promise<BrowserSessionCloseOptions> {
+    const url = `/v1/browser-sessions/${sessionId}`;
     try {
-      const response = await this.client.delete(url, {
-        params: force ? { force: true } : {},
-      });
+      const payload: Record<string, any> = {};
+      if (options.force !== undefined) payload.force = options.force;
+      if (options.preserveState !== undefined)
+        payload.preserve_state = options.preserveState;
+
+      const response = await this.client.post(url, payload);
+
       return this._transformKeysToCamelCase(response.data);
     } catch (error) {
       const errorDetail = await this._extractErrorDetail(error);
@@ -400,7 +406,10 @@ export class WitriumClient {
       // Use force=true to ensure cleanup even if session is busy
       // Swallow errors during cleanup to not mask the original error
       try {
-        await this.closeBrowserSession(session.uuid, true);
+        await this.closeBrowserSession(session.uuid, {
+          force: true,
+          preserveState: options.preserveState,
+        });
       } catch {
         // Ignore cleanup errors
       }

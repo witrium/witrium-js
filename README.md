@@ -110,11 +110,13 @@ await client.withBrowserSession(async (sessionId) => {
   // Browser session created with UK proxy and restored state
   // browserSessionId is automatically set to sessionId
   const result = await client.runWorkflowAndWait("workflow-id");
+  // State will be automatically saved as "updated-state" when exiting context
 }, {
   provider: "omega",
   useProxy: true,
   proxyCountry: "uk",
-  useStates: ["my-saved-state"], // Restore browser state
+  useStates: ["my-saved-state"],  // Restore browser state
+  preserveState: "updated-state"  // Save state when session closes
 });
 ```
 
@@ -145,8 +147,10 @@ async function run() {
     browserSessionId: session.uuid,
   });
 
-  // Close session when done
-  await client.closeBrowserSession(session.uuid);
+  // Close session when done (optionally preserve state). This will override the state name passed at creation time
+  await client.closeBrowserSession(session.uuid, {
+    preserveState: "my-saved-state"
+  });
 }
 ```
 
@@ -176,7 +180,7 @@ If you need different `useStates` for different runs, create separate browser se
 - `createBrowserSession(options)` - Create a new browser session
 - `listBrowserSessions()` - List all active sessions
 - `getBrowserSession(sessionUuid)` - Get session details
-- `closeBrowserSession(sessionUuid, force?)` - Close a session
+- `closeBrowserSession(sessionUuid, options?)` - Close a session
 - `withBrowserSession(callback, options?)` - Run callback with auto-managed session
 
 ---
@@ -856,6 +860,7 @@ interface BrowserSessionCreateOptions {
   proxyCountry?: string;    // default: "us"
   proxyCity?: string;       // default: "New York"
   useStates?: string[];     // default: undefined
+  preserveState?: string;   // default: undefined - save browser state with this name when session closes
 }
 ```
 
@@ -882,8 +887,17 @@ Close a browser session.
 ```typescript
 async closeBrowserSession(
   sessionUuid: string,
-  force?: boolean  // default: false
-): Promise<CloseBrowserSession>
+  options?: BrowserSessionCloseOptions
+): Promise<BrowserSessionCloseOptions>
+```
+
+**BrowserSessionCloseOptions:**
+
+```typescript
+interface BrowserSessionCloseOptions {
+  force?: boolean;        // default: false - force close even if session is busy
+  preserveState?: string; // default: undefined - save browser state with this name before closing (overrides state name passed at creation time)
+}
 ```
 
 **withBrowserSession()**
@@ -1021,12 +1035,12 @@ AgentExecutionStatus.CANCELLED    // "X" - Execution step cancelled
 }
 ```
 
-#### CloseBrowserSession
+#### BrowserSessionCloseOptions
 
 ```typescript
 {
-  status: string;
-  message: string;
+  force?: boolean;        // Force close even if session is busy
+  preserveState?: string; // Save browser state with this name before closing
 }
 ```
 

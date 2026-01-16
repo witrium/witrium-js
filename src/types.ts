@@ -113,6 +113,7 @@ export interface BrowserSessionCreateOptions {
   proxyCountry?: string;
   proxyCity?: string;
   useStates?: string[];
+  preserveState?: string;
 }
 
 export interface BrowserSession {
@@ -135,7 +136,7 @@ export interface ListBrowserSession {
   totalCount: number;
 }
 
-export interface CloseBrowserSession {
-  status: string;
-  message: string;
+export interface BrowserSessionCloseOptions {
+  force?: boolean;
+  preserveState?: string;
 }

@@ -42,6 +42,8 @@ async function main() {
     console.log(`  Status: ${session.status}`);
     console.log(`  Busy: ${session.isBusy}`);
     console.log(`  Provider: ${session.provider}\n`);
+  }, {
+    // preserveState: "test-js-state",
   });
 
   console.log("✓ Session automatically closed on exit\n");
