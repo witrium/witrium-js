@@ -552,14 +552,18 @@ import { WitriumClient, WorkflowRunStatus } from '@witrium/witrium';
 const client = new WitriumClient("your-api-token");
 
 async function run() {
-  // Run a workflow and wait for results
+  // Run a workflow and wait for results (polls forever by default)
   const results = await client.runWorkflowAndWait("workflow-uuid", {
     args: { key1: "value1", key2: 42 },
-    pollingInterval: 5000,
-    timeout: 300000,
   });
   console.log(`Workflow completed with status: ${results.status}`);
   console.log("Results:", results.result);
+  
+  // Or with a timeout
+  const resultsWithTimeout = await client.runWorkflowAndWait("workflow-uuid", {
+    args: { key1: "value1" },
+    timeout: 300000, // Max 5 minutes
+  });
 
   // Or run a workflow without waiting
   const response = await client.runWorkflow("workflow-uuid", {
@@ -660,10 +664,14 @@ async function run() {
 ```typescript
 new WitriumClient(
   apiToken: string,         // API token for authentication
-  baseUrl?: string,         // Optional base URL (default: "https://api.witrium.com")
-  timeout?: number          // Request timeout in milliseconds (default: 60000)
+  timeout?: number          // HTTP request timeout in milliseconds (default: 0 = no timeout)
 )
 ```
+
+**Timeout Behavior:**
+- `timeout=0` (default): No timeout - HTTP requests never time out
+- `timeout=30000`: Individual HTTP requests timeout after 30 seconds
+- Applies to all HTTP requests (runWorkflow, getResults, etc.)
 
 #### Properties
 
@@ -789,7 +797,7 @@ interface WaitUntilStateOptions {
   - `allInstructionsExecuted`: When true, also waits for all individual execution steps to complete
   - `minWaitTime`: Minimum milliseconds to wait before polling starts
   - `pollingInterval`: Milliseconds between polling attempts (default: 2000)
-  - `timeout`: Maximum milliseconds to wait (default: 60000)
+  - `timeout`: Maximum milliseconds to wait (default: undefined = poll forever until target status reached)
 
 ##### runWorkflowAndWait()
 
@@ -818,9 +826,14 @@ interface RunWorkflowAndWaitOptions extends WorkflowRunOptions {
 - `workflowId`: The UUID of the workflow to execute
 - `options`: (Optional) Configuration options (includes all `WorkflowRunOptions` plus):
   - `pollingInterval`: Milliseconds between polling attempts (default: 5000)
-  - `timeout`: Maximum milliseconds to wait (default: 300000)
+  - `timeout`: Maximum milliseconds to wait (default: undefined = poll forever until workflow completes)
   - `returnIntermediateResults`: If true, returns array of all intermediate results (default: false)
   - `onProgress`: Callback function called on each polling iteration with current results
+
+**Timeout Behavior:**
+- `timeout=undefined` (default): Polls indefinitely until workflow completes (reaches terminal status)
+- `timeout=300000`: Raises exception if workflow doesn't complete within 300 seconds (5 minutes)
+- Different from HTTP timeout - this controls how long to wait for workflow completion
 
 ##### Browser Session Methods
 
@@ -1118,13 +1131,14 @@ async function runWorkflowWithRetry(
   client: WitriumClient,
   workflowId: string,
   args: Record<string, any>,
-  maxRetries: number = 3
+  maxRetries: number = 3,
+  timeout?: number
 ) {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       return await client.runWorkflowAndWait(workflowId, {
         args,
-        timeout: 300000,
+        timeout, // Optional timeout, undefined = poll forever
       });
     } catch (error) {
       if (error instanceof WitriumClientException) {
@@ -1142,20 +1156,22 @@ async function runWorkflowWithRetry(
 ### 4. Use Appropriate Timeouts
 
 ```typescript
-// ✅ Default: Reasonable timeout (5 minutes)
-await client.runWorkflowAndWait("workflow-id", {
-  timeout: 300000,
-});
+// ✅ Default: No timeout (polls until workflow completes)
+await client.runWorkflowAndWait("workflow-id");
 
-// ✅ Adjust timeouts based on workflow complexity
+// ✅ Set timeout for workflows that should fail fast
 await client.runWorkflowAndWait("simple-data-extraction", {
-  timeout: 60000, // 1 minute
+  timeout: 60000, // Max 1 minute
 });
 
 await client.runWorkflowAndWait("complex-multi-page-workflow", {
-  timeout: 600000, // 10 minutes
+  timeout: 600000, // Max 10 minutes
   pollingInterval: 10000, // Poll less frequently
 });
+
+// ✅ For HTTP request timeout (not polling timeout)
+const client = new WitriumClient("api-token", 30000);
+// Each HTTP request times out at 30s, but polling continues indefinitely
 ```
 
 ### 5. Monitor Progress for Long-Running Workflows

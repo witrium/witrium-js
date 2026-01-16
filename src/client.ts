@@ -18,20 +18,16 @@ import { WitriumClientException } from "./errors";
 import { AgentExecutionStatus, WorkflowRunStatus } from "./constants";
 
 const DEFAULT_BASE_URL = "https://api.witrium.com";
-const DEFAULT_TIMEOUT = 60000; // 60 seconds
+const DEFAULT_TIMEOUT = 0; // 0 = no timeout (infinite)
 
 export class WitriumClient {
   private client: AxiosInstance;
   private _activeSessionId: string | null = null;
 
-  constructor(
-    apiToken: string,
-    baseUrl: string = DEFAULT_BASE_URL,
-    timeout: number = DEFAULT_TIMEOUT
-  ) {
+  constructor(apiToken: string, timeout: number = DEFAULT_TIMEOUT) {
     this.client = axios.create({
-      baseURL: baseUrl.replace(/\/$/, ""),
-      timeout: timeout,
+      baseURL: DEFAULT_BASE_URL.replace(/\/$/, ""),
+      timeout: timeout, // 0 means no timeout
       headers: {
         "X-Witrium-Key": apiToken,
         "Content-Type": "application/json",
@@ -141,7 +137,7 @@ export class WitriumClient {
     workflowId: string,
     options: RunWorkflowAndWaitOptions = {}
   ): Promise<WorkflowRunResult | WorkflowRunResult[]> {
-    const timeout = options.timeout ?? 300000;
+    const timeout = options.timeout; // undefined = poll forever
     const pollingInterval = options.pollingInterval ?? 5000;
     const returnIntermediateResults =
       options.returnIntermediateResults ?? false;
@@ -161,7 +157,14 @@ export class WitriumClient {
     const startTime = Date.now();
     const intermediateResults: WorkflowRunResult[] = [];
 
-    while (Date.now() - startTime < timeout) {
+    while (true) {
+      // Check timeout if specified
+      if (timeout !== undefined && Date.now() - startTime >= timeout) {
+        throw new WitriumClientException(
+          `Workflow execution timed out after ${timeout / 1000} seconds`
+        );
+      }
+
       const results = await this.getWorkflowResults(runId);
 
       if (returnIntermediateResults) {
@@ -178,10 +181,6 @@ export class WitriumClient {
 
       await new Promise((resolve) => setTimeout(resolve, pollingInterval));
     }
-
-    throw new WitriumClientException(
-      `Workflow execution timed out after ${timeout / 1000} seconds`
-    );
   }
 
   async waitUntilState(
@@ -192,7 +191,7 @@ export class WitriumClient {
     const allInstructionsExecuted = options.allInstructionsExecuted ?? false;
     const minWaitTime = options.minWaitTime ?? 0;
     const pollingInterval = options.pollingInterval ?? 2000;
-    const timeout = options.timeout ?? 60000;
+    const timeout = options.timeout; // undefined = poll forever
 
     if (minWaitTime > 0) {
       await new Promise((resolve) => setTimeout(resolve, minWaitTime));
@@ -212,7 +211,19 @@ export class WitriumClient {
       );
     };
 
-    while (Date.now() - startTime < timeout) {
+    while (true) {
+      // Check timeout if specified
+      if (timeout !== undefined && Date.now() - startTime >= timeout) {
+        const targetStatusName = WorkflowRunStatus.getStatusName(targetStatus);
+        let conditionMsg = `status '${targetStatusName}'`;
+        if (allInstructionsExecuted) {
+          conditionMsg += " and all instructions executed";
+        }
+        throw new WitriumClientException(
+          `Workflow run did not reach ${conditionMsg} within ${timeout / 1000} seconds`
+        );
+      }
+
       const results = await this.getWorkflowResults(runId);
 
       const statusReached = results.status === targetStatus;
@@ -238,15 +249,6 @@ export class WitriumClient {
 
       await new Promise((resolve) => setTimeout(resolve, pollingInterval));
     }
-
-    const targetStatusName = WorkflowRunStatus.getStatusName(targetStatus);
-    let conditionMsg = `status '${targetStatusName}'`;
-    if (allInstructionsExecuted) {
-      conditionMsg += " and all instructions executed";
-    }
-    throw new WitriumClientException(
-      `Workflow run did not reach ${conditionMsg} within ${timeout / 1000} seconds`
-    );
   }
 
   async cancelRun(runId: string): Promise<WorkflowRun> {
