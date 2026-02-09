@@ -320,7 +320,46 @@ export class WitriumClient {
         payload.preserve_state = options.preserveState;
 
       const response = await this.client.post(url, payload);
-      return this._transformKeysToCamelCase(response.data);
+      const session: BrowserSession = this._transformKeysToCamelCase(
+        response.data
+      );
+
+      // Poll until status is "R" (running)
+      const pollingInterval = 3000; // 3 seconds
+      const timeout = 10800000; // 3 hours timeout
+      const startTime = Date.now();
+
+      while (session.status !== "R") {
+        // Check timeout
+        if (Date.now() - startTime >= timeout) {
+          throw new WitriumClientException(
+            `Browser session ${session.uuid} did not reach running state within ${timeout / 1000} seconds`
+          );
+        }
+
+        // Wait before polling
+        await new Promise((resolve) => setTimeout(resolve, pollingInterval));
+
+        // Fetch updated session status
+        const updatedSession = await this.getBrowserSession(session.uuid);
+        console.log(updatedSession);
+
+        // Check for terminal states that are not running
+        if (
+          updatedSession.status === "C" ||
+          updatedSession.status === "X" ||
+          updatedSession.status === "F"
+        ) {
+          throw new WitriumClientException(
+            `Browser session ${session.uuid} reached terminal state '${updatedSession.status}' before running`
+          );
+        }
+
+        // Update session reference
+        Object.assign(session, updatedSession);
+      }
+
+      return session;
     } catch (error) {
       const errorDetail = await this._extractErrorDetail(error);
       const statusCode = axios.isAxiosError(error)

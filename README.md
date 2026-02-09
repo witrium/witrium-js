@@ -843,7 +843,7 @@ interface RunWorkflowAndWaitOptions extends WorkflowRunOptions {
 
 **createBrowserSession()**
 
-Create a standalone browser session.
+Create a standalone browser session. This method blocks until the browser session reaches the running state, which may take some time depending on your concurrency limits and well as the time it takes to provision the browser instance in the cloud.
 
 ```typescript
 async createBrowserSession(
@@ -1013,7 +1013,7 @@ AgentExecutionStatus.CANCELLED    // "X" - Execution step cancelled
 {
   uuid: string;
   provider: string;
-  status: string;  // "active" or "closed"
+  status: string;  // "P" (pending), "R" (running), "C" (completed), "X" (cancelled)
   isBusy: boolean;
   userManaged: boolean;
   currentRunType: string | null;  // "workflow", "talent", or null
