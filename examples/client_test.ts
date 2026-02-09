@@ -10,6 +10,7 @@ async function main() {
   const API_TOKEN = "<API_TOKEN>";
   const WORKFLOW_ID = "<WORKFLOW_ID>";
   const TALENT_ID = "<TALENT_ID>";
+  const ARGUMENT = "<ARGUMENT>";
 
   console.log("\n🚀 Testing Browser Session Management\n");
 
@@ -22,7 +23,11 @@ async function main() {
 
     // Run workflow - sessionId is automatically injected!
     console.log(`Running workflow: ${WORKFLOW_ID}`);
-    const result = await client.runWorkflowAndWait(WORKFLOW_ID);
+    const result = await client.runWorkflowAndWait(WORKFLOW_ID, {
+      args: {
+        url: `https://www.amazon.com/dp/${ARGUMENT}`,
+      },
+    });
     
     // Handle result (single result when returnIntermediateResults is false)
     const workflowResult = Array.isArray(result) ? result[result.length - 1] : result;
@@ -32,7 +37,7 @@ async function main() {
     // Run talent - sessionId is automatically injected!
     console.log(`Running talent: ${TALENT_ID}`);
     const result2 = await client.runTalent(TALENT_ID, {
-      args: { asin: "B08QZMJBFR" },
+      args: { asin: ARGUMENT },
     });
     console.log(`  ✓ Status: ${JSON.stringify(result2)}\n`);
 
@@ -43,7 +48,12 @@ async function main() {
     console.log(`  Busy: ${session.isBusy}`);
     console.log(`  Provider: ${session.provider}\n`);
   }, {
-    // preserveState: "test-js-state",
+      provider: "omega",
+      // useProxy: true,
+      // proxyCountry: "us",
+      // proxyCity: "New York",
+      // useStates: ["test-js-state"],
+      // preserveState: "test-js-state",
   });
 
   console.log("✓ Session automatically closed on exit\n");
