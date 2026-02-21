@@ -1,6 +1,6 @@
 {
   "name": "@witrium/witrium",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "JS/TS client SDK for Witrium",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -33,11 +33,11 @@
     "node": ">=16.0.0"
   },
   "dependencies": {
-    "axios": "^1.12.2"
+    "axios": "^1.13.5"
   },
   "devDependencies": {
-    "@types/node": "^24.4.0",
-    "prettier": "^3.6.2",
-    "typescript": "^5.9.2"
+    "@types/node": "^25.3.0",
+    "prettier": "^3.8.1",
+    "typescript": "^5.9.3"
   }
 }
