@@ -39,9 +39,10 @@ const apiToken = "YOUR_WITRIUM_API_TOKEN"; // Obtain from dashboard
 const client = new WitriumClient(apiToken);
 
 async function main() {
-  await client.withBrowserSession(async (sessionId) => {
+  await client.withBrowserSession(async (session) => {
     // Browser session is automatically created
     // All workflows/talents automatically use this session
+    console.log(`Session ID: ${session.uuid}, CDP URL: ${session.cdpWsUrl}`);
     
     // 3. Run workflows (browserSessionId is automatically injected)
     await client.runWorkflowAndWait("login-workflow-id", {
@@ -78,10 +79,11 @@ import { WitriumClient } from '@witrium/witrium';
 const client = new WitriumClient("your-api-token");
 
 async function run() {
-  await client.withBrowserSession(async (sessionId) => {
+  await client.withBrowserSession(async (session) => {
     // Browser session automatically created
-    console.log(`Session ID: ${sessionId}`);
-    console.log(`Client session ID: ${client.sessionId}`); // Same as sessionId
+    console.log(`Session ID: ${session.uuid}`);
+    console.log(`Client session ID: ${client.sessionId}`); // Same as session.uuid
+    console.log(`CDP WebSocket URL: ${session.cdpWsUrl}`);
     
     // All workflows/talents automatically use this session (browserSessionId auto-injected)
     const result1 = await client.runWorkflowAndWait("workflow-1");
@@ -106,9 +108,9 @@ import { WitriumClient } from '@witrium/witrium';
 
 const client = new WitriumClient("your-api-token");
 
-await client.withBrowserSession(async (sessionId) => {
+await client.withBrowserSession(async (session) => {
   // Browser session created with UK proxy and restored state
-  // browserSessionId is automatically set to sessionId
+  // browserSessionId is automatically set to session.uuid
   const result = await client.runWorkflowAndWait("workflow-id");
   // State will be automatically saved as "updated-state" when exiting context
 }, {
@@ -246,7 +248,7 @@ const client = new WitriumClient("your-api-token");
 
 async function run() {
   // Step 1: Run login workflow and preserve the authenticated state
-  await client.withBrowserSession(async (sessionId) => {
+  await client.withBrowserSession(async (session) => {
     // browserSessionId automatically injected
     await client.runWorkflowAndWait("login-workflow-id", {
       args: { username: "user@example.com", password: "secure123" },
@@ -259,7 +261,7 @@ async function run() {
 
   const [dashboardResults, profileResults] = await Promise.all([
     // Workflow A: Extract data from dashboard
-    client.withBrowserSession(async (sessionId) => {
+    client.withBrowserSession(async (session) => {
       // browserSessionId automatically injected
       return await client.runWorkflowAndWait("dashboard-scraping-workflow-id", {
         args: { report_type: "monthly" },
@@ -269,7 +271,7 @@ async function run() {
     }),
     
     // Workflow B: Update user profile (can run concurrently)
-    client.withBrowserSession(async (sessionId) => {
+    client.withBrowserSession(async (session) => {
       // browserSessionId automatically injected
       return await client.runWorkflowAndWait("profile-update-workflow-id", {
         args: { new_email: "newemail@example.com" },
@@ -302,7 +304,7 @@ import { WitriumClient } from '@witrium/witrium';
 const client = new WitriumClient("your-api-token");
 
 async function run() {
-  await client.withBrowserSession(async (sessionId) => {
+  await client.withBrowserSession(async (session) => {
     // Browser session automatically created
     // browserSessionId automatically set for all workflows/talents
 
@@ -354,7 +356,7 @@ import { WitriumClient, WorkflowRunStatus } from '@witrium/witrium';
 const client = new WitriumClient("your-api-token");
 
 async function extractCategoryData(category: string, stateName: string) {
-  return await client.withBrowserSession(async (sessionId) => {
+  return await client.withBrowserSession(async (session) => {
     try {
       // browserSessionId automatically injected
       const results = await client.runWorkflowAndWait("category-scraper-workflow", {
@@ -375,7 +377,7 @@ async function run() {
   console.log("Logging into e-commerce platform...");
   
   // Step 1: Login and save state
-  await client.withBrowserSession(async (sessionId) => {
+  await client.withBrowserSession(async (session) => {
     // browserSessionId automatically injected
     await client.runWorkflowAndWait("ecommerce-login-workflow", {
       args: { email: "seller@example.com", password: "secure123" },
@@ -410,10 +412,10 @@ import { WitriumClient } from '@witrium/witrium';
 const client = new WitriumClient("your-api-token");
 
 async function run() {
-  await client.withBrowserSession(async (sessionId) => {
+  await client.withBrowserSession(async (session) => {
     // Browser session automatically created
     // browserSessionId automatically set for all workflows
-    console.log(`Browser session created: ${sessionId}`);
+    console.log(`Browser session created: ${session.uuid}`);
     
     // Step 1: Secure login with 2FA
     console.log("Initiating secure banking login...");
@@ -474,7 +476,7 @@ import { WitriumClient } from '@witrium/witrium';
 const client = new WitriumClient("your-api-token");
 
 async function run() {
-  await client.withBrowserSession(async (sessionId) => {
+  await client.withBrowserSession(async (session) => {
     // Browser session automatically created
     // browserSessionId automatically injected for all talents
     
@@ -504,10 +506,10 @@ import { WitriumClient } from '@witrium/witrium';
 const client = new WitriumClient("your-api-token");
 
 async function run() {
-  await client.withBrowserSession(async (sessionId) => {
+  await client.withBrowserSession(async (session) => {
     // Browser session automatically created
     // browserSessionId automatically injected for all workflows/talents
-    console.log(`Session ID: ${sessionId}`);
+    console.log(`Session ID: ${session.uuid}`);
 
     // Step 1: Run a workflow to set up the browser state (e.g., login, navigate)
     console.log("Running setup workflow...");
@@ -532,9 +534,8 @@ async function run() {
     });
     console.log(`Follow-up completed: ${followupResult.status}`);
 
-    // Check session details at any point
-    const session = await client.getBrowserSession(sessionId);
-    console.log(`Session status: ${session.status}, Busy: ${session.isBusy}`);
+    // Access session fields directly from the callback argument
+    console.log(`Session status: ${session.status}, CDP URL: ${session.cdpWsUrl}`);
   });
   // Browser session automatically closed on exit
   console.log("Session closed");
@@ -684,8 +685,8 @@ new WitriumClient(
 Returns the current active session ID set by `withBrowserSession()`, or `null` if not in a session context.
 
 ```typescript
-await client.withBrowserSession(async (sessionId) => {
-  console.log(client.sessionId === sessionId); // true
+await client.withBrowserSession(async (session) => {
+  console.log(client.sessionId === session.uuid); // true
 });
 console.log(client.sessionId); // null
 ```
@@ -906,7 +907,7 @@ Run a callback with an automatically managed browser session. **All workflows an
 
 ```typescript
 async withBrowserSession<T>(
-  callback: (sessionId: string) => Promise<T>,
+  callback: (session: BrowserSession) => Promise<T>,
   options?: BrowserSessionCreateOptions
 ): Promise<T>
 ```
@@ -1012,17 +1013,11 @@ AgentExecutionStatus.CANCELLED    // "X" - Execution step cancelled
 ```typescript
 {
   uuid: string;
-  provider: string;
-  status: string;  // "P" (pending), "R" (running), "C" (completed), "X" (cancelled)
-  isBusy: boolean;
+  status: string;        // "P" (pending), "R" (running), "C" (completed), "X" (cancelled)
   userManaged: boolean;
-  currentRunType: string | null;  // "workflow", "talent", or null
-  currentRunId: string | null;
-  createdAt: string;
   startedAt: string | null;
-  lastActivityAt: string | null;
-  proxyCountry: string | null;
-  proxyCity: string | null;
+  pageTargetId: string | null;
+  cdpWsUrl: string | null;  // CDP WebSocket URL for direct browser connection
 }
 ```
 
@@ -1093,7 +1088,7 @@ This is particularly useful for:
 
 ```typescript
 // ✅ Good - Automatically closes session and injects sessionId
-await client.withBrowserSession(async (sessionId) => {
+await client.withBrowserSession(async (session) => {
   // browserSessionId is automatically injected!
   const results = await client.runWorkflowAndWait("workflow-id");
 });
@@ -1110,7 +1105,7 @@ await client.closeBrowserSession(session.uuid); // Easy to forget!
 
 ```typescript
 // ✅ For most use cases - use a shared browser session (recommended)
-await client.withBrowserSession(async (sessionId) => {
+await client.withBrowserSession(async (session) => {
   // All workflows automatically share the same browser session
   // browserSessionId is automatically injected!
   const result1 = await client.runWorkflowAndWait("login-workflow");
@@ -1124,7 +1119,7 @@ await client.withBrowserSession(async (sessionId) => {
 const categories = ["electronics", "clothing", "books"];
 await Promise.all(
   categories.map(category =>
-    client.withBrowserSession(async (sessionId) => {
+    client.withBrowserSession(async (session) => {
       // browserSessionId is automatically injected!
       return await client.runWorkflowAndWait("scraper", {
         args: { category },
