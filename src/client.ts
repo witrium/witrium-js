@@ -342,7 +342,6 @@ export class WitriumClient {
 
         // Fetch updated session status
         const updatedSession = await this.getBrowserSession(session.uuid);
-        console.log(updatedSession);
 
         // Check for terminal states that are not running
         if (
@@ -429,7 +428,7 @@ export class WitriumClient {
   }
 
   async withBrowserSession<T>(
-    callback: (sessionId: string) => Promise<T>,
+    callback: (session: BrowserSession) => Promise<T>,
     options: BrowserSessionCreateOptions = {}
   ): Promise<T> {
     const session = await this.createBrowserSession(options);
@@ -437,7 +436,7 @@ export class WitriumClient {
     this._activeSessionId = session.uuid;
 
     try {
-      return await callback(session.uuid);
+      return await callback(session);
     } finally {
       // Restore previous session ID (for nested calls)
       this._activeSessionId = previousSessionId;

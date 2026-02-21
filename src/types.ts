@@ -118,17 +118,11 @@ export interface BrowserSessionCreateOptions {
 
 export interface BrowserSession {
   uuid: string;
-  provider: string;
   status: string;
-  isBusy: boolean;
   userManaged: boolean;
-  currentRunType: string | null;
-  currentRunId: string | null;
-  createdAt: string;
   startedAt: string | null;
-  lastActivityAt: string | null;
-  proxyCountry: string | null;
-  proxyCity: string | null;
+  pageTargetId: string | null;
+  cdpWsUrl: string | null;
 }
 
 export interface ListBrowserSession {
