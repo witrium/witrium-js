@@ -17,8 +17,8 @@ async function main() {
   const client = new WitriumClient(API_TOKEN);
 
   // Test with automatic session management
-  await client.withBrowserSession(async (sessionId) => {
-    console.log(`Session ID: ${sessionId}`);
+  await client.withBrowserSession(async (session) => {
+    console.log(`Session ID: ${session.uuid}`);
     console.log(`Client session ID: ${client.sessionId}\n`);
 
     // Run workflow - sessionId is automatically injected!
@@ -42,11 +42,11 @@ async function main() {
     console.log(`  ✓ Status: ${JSON.stringify(result2)}\n`);
 
     // Check session details
-    const session = await client.getBrowserSession(sessionId);
+    const browserSession = await client.getBrowserSession(session.uuid);
     console.log("Session Details:");
-    console.log(`  Status: ${session.status}`);
-    console.log(`  Busy: ${session.isBusy}`);
-    console.log(`  Provider: ${session.provider}\n`);
+    console.log(`  Status: ${browserSession.status}`);
+    console.log(`  Page Target ID: ${browserSession.pageTargetId}`);
+    console.log(`  CDP WebSocket URL: ${browserSession.cdpWsUrl}\n`);
   }, {
       provider: "omega",
       // useProxy: true,
